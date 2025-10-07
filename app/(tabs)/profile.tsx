@@ -8,6 +8,7 @@ import { Text } from '../../components/Themed';
 import UserAvatar from '../../components/UserAvatar';
 import { db } from '../../config/firebase';
 import { useAuth } from '../../contexts/AuthContext';
+import { createMockUser, createMockProfile, createMockPosts } from '../../utils/mockData';
 
 interface UserProfile {
   bio?: string;
@@ -36,9 +37,12 @@ export default function ProfileScreen() {
   const [activeTab, setActiveTab] = useState<'posts' | 'videos' | 'books'>('posts');
   const { user } = useAuth();
 
+  // Load profile (Firestore or mock)
   const loadProfile = useCallback(async () => {
     try {
       if (!db || !user) {
+        const mockProfile = createMockProfile();
+        setProfile(mockProfile);
         setIsLoading(false);
         return;
       }
@@ -47,20 +51,21 @@ export default function ProfileScreen() {
       if (profileDoc.exists()) {
         setProfile(profileDoc.data() as UserProfile);
       } else {
-        setProfile(null);
+        setProfile(createMockProfile());
       }
     } catch (error) {
-      console.error('Error loading profile:', error);
-      setProfile(null);
+      console.warn('Using mock profile due to error:', error);
+      setProfile(createMockProfile());
     } finally {
       setIsLoading(false);
     }
   }, [user]);
 
+  // Load posts (Firestore or mock)
   const loadUserPosts = useCallback(async () => {
     try {
       if (!db || !user) {
-        setUserPosts([]);
+        setUserPosts(createMockPosts(5));
         return;
       }
 
@@ -74,19 +79,28 @@ export default function ProfileScreen() {
         id: doc.id,
         ...doc.data(),
       })) as UserPost[];
-      
+
       setUserPosts(postsData);
     } catch (error) {
-      console.error('Error loading posts:', error);
-      setUserPosts([]);
+      console.warn('Using mock posts due to error:', error);
+      setUserPosts(createMockPosts(5));
     }
   }, [user]);
 
+  // Initialize profile + posts
   useEffect(() => {
-    if (user) {
-      loadProfile();
-      loadUserPosts();
+    if (!user) {
+      // Mock data when no Firebase user
+      const mockUser = createMockUser();
+      console.warn('Using mock user:', mockUser.displayName);
+      setProfile(createMockProfile());
+      setUserPosts(createMockPosts(5));
+      setIsLoading(false);
+      return;
     }
+
+    loadProfile();
+    loadUserPosts();
   }, [user, loadProfile, loadUserPosts]);
 
   const renderPost = ({ item }: { item: UserPost }) => (
@@ -129,7 +143,7 @@ export default function ProfileScreen() {
     );
   }
 
-  if (!user) {
+  if (!user && !profile) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.loadingContainer}>
@@ -151,16 +165,14 @@ export default function ProfileScreen() {
 
         <View style={styles.profileSection}>
           <UserAvatar
-            photoUrl={user?.photoURL || undefined}
-            displayName={user?.displayName || 'Anonymous'}
+            photoUrl={user?.photoURL || createMockUser().photoURL || undefined}
+            displayName={user?.displayName || createMockUser().displayName}
             size={100}
           />
-          <Text style={styles.displayName}>{user?.displayName || 'Anonymous'}</Text>
-          <Text style={styles.email}>{user?.email}</Text>
-          
-          {profile?.bio && (
-            <Text style={styles.bio}>{profile.bio}</Text>
-          )}
+          <Text style={styles.displayName}>{user?.displayName || createMockUser().displayName}</Text>
+          <Text style={styles.email}>{user?.email || createMockUser().email}</Text>
+
+          {profile?.bio && <Text style={styles.bio}>{profile.bio}</Text>}
 
           <View style={styles.stats}>
             <View style={styles.statItem}>
@@ -180,9 +192,7 @@ export default function ProfileScreen() {
           {profile?.favoriteGenres && profile.favoriteGenres.length > 0 && (
             <View style={styles.genresSection}>
               <Text style={styles.sectionTitle}>Favorite Genres</Text>
-              <View style={styles.genresList}>
-                {profile.favoriteGenres.map(renderGenreTag)}
-              </View>
+              <View style={styles.genresList}>{profile.favoriteGenres.map(renderGenreTag)}</View>
             </View>
           )}
 
@@ -191,11 +201,11 @@ export default function ProfileScreen() {
               <Text style={styles.sectionTitle}>Reading Goal</Text>
               <View style={styles.goalProgress}>
                 <View style={styles.progressBar}>
-                  <View 
+                  <View
                     style={[
-                      styles.progressFill, 
-                      { width: `${Math.min((profile?.booksRead || 0) / profile.readingGoal * 100, 100)}%` }
-                    ]} 
+                      styles.progressFill,
+                      { width: `${Math.min((profile?.booksRead || 0) / profile.readingGoal * 100, 100)}%` },
+                    ]}
                   />
                 </View>
                 <Text style={styles.goalText}>
@@ -211,25 +221,19 @@ export default function ProfileScreen() {
             style={[styles.tab, activeTab === 'posts' && styles.activeTab]}
             onPress={() => setActiveTab('posts')}
           >
-            <Text style={[styles.tabText, activeTab === 'posts' && styles.activeTabText]}>
-              Posts
-            </Text>
+            <Text style={[styles.tabText, activeTab === 'posts' && styles.activeTabText]}>Posts</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.tab, activeTab === 'videos' && styles.activeTab]}
             onPress={() => setActiveTab('videos')}
           >
-            <Text style={[styles.tabText, activeTab === 'videos' && styles.activeTabText]}>
-              Videos
-            </Text>
+            <Text style={[styles.tabText, activeTab === 'videos' && styles.activeTabText]}>Videos</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.tab, activeTab === 'books' && styles.activeTab]}
             onPress={() => setActiveTab('books')}
           >
-            <Text style={[styles.tabText, activeTab === 'books' && styles.activeTabText]}>
-              Books
-            </Text>
+            <Text style={[styles.tabText, activeTab === 'books' && styles.activeTabText]}>Books</Text>
           </TouchableOpacity>
         </View>
 
@@ -434,4 +438,4 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: 'bold',
   },
-}); 
+});
