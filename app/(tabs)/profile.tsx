@@ -15,8 +15,7 @@ interface UserProfile {
   favoriteGenres?: string[];
   readingGoal?: number;
   booksRead?: number;
-  followers?: number;
-  following?: number;
+  friends?: number;
   joinDate?: string;
 }
 
@@ -180,12 +179,8 @@ export default function ProfileScreen() {
               <Text style={styles.statLabel}>Posts</Text>
             </View>
             <View style={styles.statItem}>
-              <Text style={styles.statNumber}>{profile?.followers || 0}</Text>
-              <Text style={styles.statLabel}>Followers</Text>
-            </View>
-            <View style={styles.statItem}>
-              <Text style={styles.statNumber}>{profile?.following || 0}</Text>
-              <Text style={styles.statLabel}>Following</Text>
+              <Text style={styles.statNumber}>{profile?.friends || 0}</Text>
+              <Text style={styles.statLabel}>Friends</Text>
             </View>
           </View>
 
@@ -193,25 +188,6 @@ export default function ProfileScreen() {
             <View style={styles.genresSection}>
               <Text style={styles.sectionTitle}>Favorite Genres</Text>
               <View style={styles.genresList}>{profile.favoriteGenres.map(renderGenreTag)}</View>
-            </View>
-          )}
-
-          {profile?.readingGoal && (
-            <View style={styles.readingGoalSection}>
-              <Text style={styles.sectionTitle}>Reading Goal</Text>
-              <View style={styles.goalProgress}>
-                <View style={styles.progressBar}>
-                  <View
-                    style={[
-                      styles.progressFill,
-                      { width: `${Math.min((profile?.booksRead || 0) / profile.readingGoal * 100, 100)}%` },
-                    ]}
-                  />
-                </View>
-                <Text style={styles.goalText}>
-                  {profile?.booksRead || 0} / {profile.readingGoal} books
-                </Text>
-              </View>
             </View>
           )}
         </View>

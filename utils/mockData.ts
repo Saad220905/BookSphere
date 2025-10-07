@@ -3,8 +3,7 @@ export interface MockUserProfile {
   favoriteGenres?: string[];
   readingGoal?: number;
   booksRead?: number;
-  followers?: number;
-  following?: number;
+  friends?: number;
   joinDate?: string;
 }
 
@@ -39,8 +38,7 @@ export const createMockProfile = (): MockUserProfile => ({
   favoriteGenres: ['Fiction', 'Mystery', 'Science Fiction', 'Classic Literature'],
   readingGoal: 50,
   booksRead: 23,
-  followers: 156,
-  following: 142,
+  friends: 156,
   joinDate: '2025-01-15T00:00:00.000Z'
 });
 
