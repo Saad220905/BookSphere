@@ -1,3 +1,6 @@
+import { collection, query, where, getDocs, addDoc, Firestore } from 'firebase/firestore';
+import { db } from '../config/firebase';
+
 interface OpenLibraryDoc {
     title: string;
     ebook_access: 'public' | 'restricted' | 'borrowable' | 'printdisabled';
@@ -22,6 +25,19 @@ interface InternetArchiveMetadata {
     files: InternetArchiveFile[];
 }
 
+export class BookSearchError extends Error {
+  constructor(message: string, public code?: string) {
+    super(message);
+    this.name = 'BookSearchError';
+  }
+}
+
+function getFirestoreInstance(): Firestore {
+  if (!db) {
+    throw new BookSearchError('Firestore is not initialized. Please check your Firebase configuration.');
+  }
+  return db;
+}
 
 /**
  * This function performs API calls to OpenLibrary and Internet Archive
@@ -31,7 +47,24 @@ export async function fetchBookPdfUrl(title: string): Promise<string | null> {
     console.log(`Searching for PDF URL for '${title}'...`);
 
     try {
-        // Step 1: Search OpenLibrary's API
+        // Step 1 : Check Firebase first for title
+        const firestore = getFirestoreInstance();
+        const booksCollectionRef = collection(firestore, 'books')
+        const q = query(booksCollectionRef, where('title', '==', title));
+
+        const querySnapshot = await getDocs(q);
+
+        if (!querySnapshot.empty) {
+            // A book with this exact title was found
+            const bookDoc = querySnapshot.docs[0];
+            const bookData = bookDoc.data();
+            console.log(`Found '${bookData.title}' in Firebase.`);
+            return bookData.pdf_url;
+        }
+        
+        console.log(`'${title}' not found in Firebase. Searching APIs...`);
+
+        // Step 2: Search OpenLibrary's API if not found in Firebase
         const searchUrl = `https://openlibrary.org/search.json?q=title:"${encodeURIComponent(title)}"&language=eng`;
         const olResponse = await fetch(searchUrl);
         const olData: OpenLibraryResponse = await olResponse.json();
@@ -51,7 +84,7 @@ export async function fetchBookPdfUrl(title: string): Promise<string | null> {
             return null;
         }
 
-        // Step 2: Verify a PDF copy exists in the Internet Archive link
+        // Step 3: Verify a PDF copy exists in the Internet Archive link
         let pdfUrl: string | null = null;
         for (const identifier of bookCandidate.ia) {
             try {
@@ -65,6 +98,7 @@ export async function fetchBookPdfUrl(title: string): Promise<string | null> {
                     const pdfFile = metadata.files.find(f => f.name.endsWith('.pdf'));
                     if (pdfFile) {
                         pdfUrl = `https://archive.org/download/${identifier}/${encodeURIComponent(pdfFile.name)}`;
+                        console.log(`Successfully found PDF URL: ${pdfUrl}`);
                         break; // We found a valid PDF, no need to check other identifiers
                     }
                 }
@@ -78,9 +112,24 @@ export async function fetchBookPdfUrl(title: string): Promise<string | null> {
             console.log(`Could not find a verifiable English PDF scan for '${title}'.`);
             return null;
         }
+        
+        // Step 4 : Final check against Firebase to prevent duplicate titles
+        const finalCheckQuery = query(booksCollectionRef, where('title', '==', bookCandidate.title));
+        const finalCheckSnapshot = await getDocs(finalCheckQuery);
+        
+        if (finalCheckSnapshot.empty) {
+            const newBookData = {
+                title: bookCandidate.title, 
+                author: bookCandidate.author_name ? bookCandidate.author_name.join(', ') : 'N/A',
+                publish_year: bookCandidate.first_publish_year || 'N/A',
+                pdf_url: pdfUrl,
+            };
+            await addDoc(booksCollectionRef, newBookData);
+            console.log(`Successfully ADDED '${newBookData.title}' to Firebase.`);
+        } else {
+            console.log(`'${bookCandidate.title}' already exists in Firebase. Skipping add.`);
+        }
 
-        // Step 3: Return the final PDF URL
-        console.log(`Successfully found PDF URL: ${pdfUrl}`);
         return pdfUrl;
 
     } catch (err) {
