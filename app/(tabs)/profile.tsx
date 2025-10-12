@@ -200,12 +200,6 @@ export default function ProfileScreen() {
             <Text style={[styles.tabText, activeTab === 'posts' && styles.activeTabText]}>Posts</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.tab, activeTab === 'videos' && styles.activeTab]}
-            onPress={() => setActiveTab('videos')}
-          >
-            <Text style={[styles.tabText, activeTab === 'videos' && styles.activeTabText]}>Videos</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
             style={[styles.tab, activeTab === 'books' && styles.activeTab]}
             onPress={() => setActiveTab('books')}
           >
