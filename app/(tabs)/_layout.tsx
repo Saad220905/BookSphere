@@ -43,6 +43,14 @@ export default function TabLayout() {
           tabBarLabel: 'Profile',
         }}
       />
+      <Tabs.Screen
+        name="search"
+        options={{
+          headerShown: false,
+          tabBarIcon: ({ color }) => <FontAwesome name="user" size={24} color={color} />,
+          tabBarLabel: 'Search',
+        }}
+      />
     </Tabs>
   );
 }
