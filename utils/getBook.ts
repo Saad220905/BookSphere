@@ -1,4 +1,4 @@
-import { collection, query, where, getDocs, addDoc, Firestore } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, setDoc, Firestore, updateDoc } from 'firebase/firestore';
 import { db } from '../config/firebase';
 
 interface OpenLibraryDoc {
@@ -34,7 +34,7 @@ export class BookSearchError extends Error {
 
 function getFirestoreInstance(): Firestore {
   if (!db) {
-    throw new BookSearchError('Firestore is not initialized. Please check your Firebase configuration.');
+    throw new BookSearchError('Firestore is not initialized.');
   }
   return db;
 }
@@ -43,15 +43,16 @@ function getFirestoreInstance(): Firestore {
  * This function performs API calls to OpenLibrary and Internet Archive
  * to find a public domain PDF for a given book title.
  */
-export async function fetchBookPdfUrl(title: string): Promise<string | null> {
+export async function fetchBookPdfUrl(title: string): Promise<{ pdf_url: string; bookId: string; } | null>  {
     console.log(`Searching for PDF URL for '${title}'...`);
 
     try {
         // Step 1 : Check Firebase first for title
         const firestore = getFirestoreInstance();
         const booksCollectionRef = collection(firestore, 'books')
-        const q = query(booksCollectionRef, where('title', '==', title));
 
+        const normalizedTitle = title.toLowerCase().trim();
+        const q = query(booksCollectionRef, where('title', '==', normalizedTitle));
         const querySnapshot = await getDocs(q);
 
         if (!querySnapshot.empty) {
@@ -59,7 +60,9 @@ export async function fetchBookPdfUrl(title: string): Promise<string | null> {
             const bookDoc = querySnapshot.docs[0];
             const bookData = bookDoc.data();
             console.log(`Found '${bookData.title}' in Firebase.`);
-            return bookData.pdf_url;
+            console.log(`${bookData.pdf_url} , ${bookData.book_id}`);
+            return { pdf_url: bookData.pdf_url, bookId: bookData.book_id };
+
         }
         
         console.log(`'${title}' not found in Firebase. Searching APIs...`);
@@ -86,6 +89,7 @@ export async function fetchBookPdfUrl(title: string): Promise<string | null> {
 
         // Step 3: Verify a PDF copy exists in the Internet Archive link
         let pdfUrl: string | null = null;
+        let workingId: string | null = null;
         for (const identifier of bookCandidate.ia) {
             try {
                 const metaUrl = `https://archive.org/metadata/${identifier}`;
@@ -98,6 +102,7 @@ export async function fetchBookPdfUrl(title: string): Promise<string | null> {
                     const pdfFile = metadata.files.find(f => f.name.endsWith('.pdf'));
                     if (pdfFile) {
                         pdfUrl = `https://archive.org/download/${identifier}/${encodeURIComponent(pdfFile.name)}`;
+                        workingId = identifier;
                         console.log(`Successfully found PDF URL: ${pdfUrl}`);
                         break; // We found a valid PDF, no need to check other identifiers
                     }
@@ -108,32 +113,54 @@ export async function fetchBookPdfUrl(title: string): Promise<string | null> {
             }
         }
 
-        if (!pdfUrl) {
+        if (!pdfUrl || !workingId ) {
             console.log(`Could not find a verifiable English PDF scan for '${title}'.`);
             return null;
         }
         
         // Step 4 : Final check against Firebase to prevent duplicate titles
-        const finalCheckQuery = query(booksCollectionRef, where('title', '==', bookCandidate.title));
+        const finalCheckQuery = query(booksCollectionRef, where('title', '==', bookCandidate.title.toLowerCase().trim()));
         const finalCheckSnapshot = await getDocs(finalCheckQuery);
         
         if (finalCheckSnapshot.empty) {
+            const bookDocRef = doc(firestore, 'books', workingId);
+
             const newBookData = {
-                title: bookCandidate.title, 
+                title: bookCandidate.title.toLowerCase().trim(), 
                 author: bookCandidate.author_name ? bookCandidate.author_name.join(', ') : 'N/A',
                 publish_year: bookCandidate.first_publish_year || 'N/A',
                 pdf_url: pdfUrl,
+                book_id: workingId,
             };
-            await addDoc(booksCollectionRef, newBookData);
+            await setDoc(bookDocRef, newBookData);
             console.log(`Successfully ADDED '${newBookData.title}' to Firebase.`);
+            return { pdf_url: pdfUrl , bookId: workingId };
         } else {
+            const existingDoc = finalCheckSnapshot.docs[0];
+            const existingData = existingDoc.data();
             console.log(`'${bookCandidate.title}' already exists in Firebase. Skipping add.`);
+            return { pdf_url: existingData.pdf_url , bookId: existingData.book_id};
         }
-
-        return pdfUrl;
 
     } catch (err) {
         console.error('An error occurred during the fetch process:', err);
         return null;
     }
+}
+
+
+/*
+* This function updates a book document in Firestore to add the total page count
+*/
+export async function updateBookPageCount(bookId: string, pageCount: number): Promise<void> {
+  try {
+    const firestore = getFirestoreInstance();
+    const bookDocRef = doc(firestore, 'books', bookId);
+
+    await updateDoc(bookDocRef, {
+      pageCount: pageCount
+    });
+  } catch (error) {
+    console.error("Error updating page count:", error);
+  }
 }
