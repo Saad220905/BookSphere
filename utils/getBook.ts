@@ -158,7 +158,7 @@ export async function updateBookPageCount(bookId: string, pageCount: number): Pr
     const bookDocRef = doc(firestore, 'books', bookId);
 
     await updateDoc(bookDocRef, {
-      pageCount: pageCount
+      page_count: pageCount
     });
   } catch (error) {
     console.error("Error updating page count:", error);
