@@ -1,3 +1,4 @@
+import React from 'react';
 import { Stack } from 'expo-router';
 import { useColorScheme } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -13,16 +14,7 @@ export default function RootLayout() {
       <AuthProvider>
         <NotificationProvider>
           <NetworkStatus />
-          <Stack
-            screenOptions={{
-              headerShown: false,
-              headerStyle: {
-                backgroundColor: colorScheme === 'dark' ? '#000' : '#fff',
-              },
-              headerTintColor: colorScheme === 'dark' ? '#fff' : '#000',
-              headerShadowVisible: false,
-            }}
-          />
+          <Stack screenOptions={{ headerShown: false }} />
         </NotificationProvider>
       </AuthProvider>
     </SafeAreaProvider>
