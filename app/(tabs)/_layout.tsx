@@ -47,7 +47,7 @@ export default function TabLayout() {
         name="search"
         options={{
           headerShown: false,
-          tabBarIcon: ({ color }) => <FontAwesome name="user" size={24} color={color} />,
+          tabBarIcon: ({ color }) => <FontAwesome name="search" size={24} color={color} />,
           tabBarLabel: 'Search',
         }}
       />

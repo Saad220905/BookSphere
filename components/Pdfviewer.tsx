@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Dimensions, ActivityIndicator, Text, TouchableOpacity, KeyboardAvoidingView, Modal, TouchableWithoutFeedback } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { StyleSheet, View, Dimensions, ActivityIndicator, Text, TouchableOpacity, KeyboardAvoidingView, Modal, TouchableWithoutFeedback, Platform,TextInput, Button } from 'react-native';
 import Pdf, { type PdfProps } from 'react-native-pdf'; // this error is not real, ignore
 import { updateBookPageCount } from '../utils/getBook';
 
@@ -7,10 +7,11 @@ import { updateBookPageCount } from '../utils/getBook';
 import BookCommentsDisplay from './BookCommentsDisplay';
 import { listenForComments, addComment , Comment } from '../utils/bookComments';
 
-const UpArrowIcon = () => (
-    <View style={{ width: 24, height: 24, justifyContent: 'center', alignItems: 'center' }}>
-      <View style={{ width: 16, height: 16, borderLeftWidth: 2, borderTopWidth: 2, borderColor: '#fff', transform: [{ rotate: '45deg' }], marginBottom: -4 }} />
-    </View>
+const CommentIcon = () => (
+  <View style={styles.iconContainer}>
+     <View style={styles.iconBubble}/>
+     <View style={styles.iconTail}/>
+  </View>
 );
 
 interface PdfViewerProps {
@@ -27,7 +28,9 @@ export default function PdfViewer({ source, bookId }: PdfViewerProps) {
   // Comment stuff
   const [comments, setComments] = useState<Comment[]>([]);
   const [isCommentSectionVisible, setIsCommentSectionVisible] = useState(false);
-
+  const [newComment, setNewComment] = useState('');
+  const textInputRef = useRef<TextInput>(null);
+  
   useEffect(() => {
     if (!bookId || !currentPage) return;
 
@@ -40,15 +43,24 @@ export default function PdfViewer({ source, bookId }: PdfViewerProps) {
     return () => unsubscribe();
   }, [bookId, currentPage]); 
 
-  const handlePostComment = (text: string) => {
-    addComment(bookId, currentPage, text, "testing123"); // CHANGE LATER
+  const handlePostComment = (textFromInput?: string) => {
+    const commentText = textFromInput ?? newComment;
+    if (commentText.trim() === '') { return; }
+    addComment(bookId, currentPage, commentText, "testing123"); // CHANGE LATER
+    setNewComment(''); 
+    textInputRef.current?.blur(); 
+  };
+
+  const openCommentList = () => {
+    textInputRef.current?.blur(); 
+    setIsCommentSectionVisible(true);
   };
 
   return (
     <KeyboardAvoidingView
       behavior={"padding"}
       style={styles.container}
-    >
+    >  
       <View style={styles.pdfViewContainer}>
         <Pdf
           source={source}
@@ -86,17 +98,27 @@ export default function PdfViewer({ source, bookId }: PdfViewerProps) {
             </Text>
           </View>
         )}
-        {/* Comment view toggle */}
-        {!isLoading && (
-          <TouchableOpacity 
-            style={styles.toggleButton} 
-            onPress={() => setIsCommentSectionVisible(true)}
-          >
-            <UpArrowIcon/>
-          </TouchableOpacity>
-        )}
       </View>
-
+        {!isLoading && (
+        <View style={styles.commentInputContainer}>
+           {/* Button to toggle comments */}
+          <TouchableOpacity onPress={openCommentList} style={styles.openListButton}>
+            <CommentIcon />
+            {/* Display comment count */}
+            {comments.length > 0 && <Text style={styles.commentCountBadge}>{comments.length}</Text>}
+          </TouchableOpacity>
+          <TextInput
+            ref={textInputRef}
+            style={styles.textInput}
+            placeholder={`Add a comment...`}
+            placeholderTextColor="#8e8e93"
+            value={newComment}
+            onChangeText={setNewComment}
+            multiline={true}
+          />
+          <Button title="Post" onPress={() => handlePostComment()} disabled={!newComment.trim()} />
+        </View>
+        )}
       <Modal
         animationType="slide"
         transparent={true}
@@ -120,12 +142,14 @@ export default function PdfViewer({ source, bookId }: PdfViewerProps) {
                 comments={comments}
                 onPostComment={handlePostComment}
                 onClose={() => setIsCommentSectionVisible(false)}
+                commentInputValue={newComment}
+                onCommentInputChange={setNewComment}
               />
             </View>
           </TouchableWithoutFeedback>
         </TouchableOpacity>
       </Modal>
-  </KeyboardAvoidingView>  
+    </KeyboardAvoidingView>
 )}
 
 const styles = StyleSheet.create({
@@ -159,17 +183,70 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: 'bold',
   },
-  toggleButton: {
+  commentInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#3a3a3c',
+    backgroundColor: '#1c1c1e', 
+  },
+  openListButton: {
+    padding: 8,
+    marginRight: 8,
+    position: 'relative', 
+  },
+  commentCountBadge: {
     position: 'absolute',
-    bottom: 20,
-    alignSelf: 'center',
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    top: 0,
+    right: 0,
+    backgroundColor: '#007AFF',
+    color: 'white',
+    borderRadius: 8,
+    paddingHorizontal: 5,
+    fontSize: 10,
+    fontWeight: 'bold',
+    minWidth: 16,
+    textAlign: 'center',
+  },
+  textInput: {
+    flex: 1,
+    backgroundColor: '#3a3a3c',
+    borderRadius: 20,
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+    marginRight: 10,
+    color: '#fff',
+    fontSize: 16,
+    maxHeight: 80, 
+  },
+  iconContainer: {
+    width: 28, 
+    height: 28,
     justifyContent: 'center',
     alignItems: 'center',
-    elevation: 5,
+  },
+  iconBubble: {
+    width: 20,
+    height: 16,
+    borderWidth: 1.5,
+    borderColor: '#8e8e93', 
+    borderRadius: 8,
+  },
+  iconTail: {
+    width: 0,
+    height: 0,
+    borderLeftWidth: 5,  
+    borderRightWidth: 4, 
+    borderTopWidth: 6,  
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderTopColor: '#8e8e93', 
+    position: 'absolute',
+    bottom: 1, 
+    left: 13, 
+    transform: [{ rotate: '-15deg' }]
   },
   modalBackdrop: {
     flex: 1,

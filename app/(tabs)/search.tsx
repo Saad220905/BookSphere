@@ -22,7 +22,7 @@ export default function SearchScreen() {
             if (result) {
                 router.push({
                     pathname: "/viewer",
-                    params: { url: result.pdf_url, bookId: result.bookId }
+                    params: { pdf_url: result.pdf_url, book_id: result.book_id , book_title: result.title }
                 });
             } else {
                 Alert.alert("Not Found", `Could not find a public domain PDF for "${query}". Please try another title.`);

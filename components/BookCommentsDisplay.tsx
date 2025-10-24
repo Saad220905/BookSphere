@@ -8,6 +8,8 @@ interface CommentSectionProps {
   comments: Comment[];
   onPostComment: (commentText: string) => void;
   onClose: () => void;
+  commentInputValue: string;        
+  onCommentInputChange: (text: string) => void;
 }
 
 const DownArrowIcon = () => (
@@ -21,13 +23,12 @@ const HeartIcon = ({ liked }: { liked: boolean }) => (
     </Text>
 );
 
-export default function BookCommentsDisplay({ bookId, currentUserId, comments, onPostComment, onClose }: CommentSectionProps) {
-  const [newComment, setNewComment] = useState('');
+export default function BookCommentsDisplay({ bookId, currentUserId, comments, onPostComment, onClose, commentInputValue, onCommentInputChange }: CommentSectionProps) {
+  // const [newComment, setNewComment] = useState('');
 
   const handlePost = () => {
-    if (newComment.trim() === '') return;
-    onPostComment(newComment);
-    setNewComment('');
+    if (commentInputValue.trim() === '') return;
+    onPostComment(commentInputValue);
   };
 
   return (
@@ -81,10 +82,10 @@ export default function BookCommentsDisplay({ bookId, currentUserId, comments, o
           style={styles.textInput}
           placeholder="Add a comment..."
           placeholderTextColor="#8e8e93"
-          value={newComment}
-          onChangeText={setNewComment}
+          value={commentInputValue}
+          onChangeText={onCommentInputChange}
         />
-        <Button title="Post" onPress={handlePost} disabled={!newComment.trim()} />
+        <Button title="Post" onPress={handlePost} disabled={!commentInputValue.trim()} />
       </View>
     </KeyboardAvoidingView>
   );
