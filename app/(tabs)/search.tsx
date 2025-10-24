@@ -17,12 +17,12 @@ export default function SearchScreen() {
 
         setIsLoading(true);
         try {
-            const pdfUrl = await fetchBookPdfUrl(query);
+            const result = await fetchBookPdfUrl(query);
 
-            if (pdfUrl) {
+            if (result) {
                 router.push({
                     pathname: "/viewer",
-                    params: { url: pdfUrl }
+                    params: { url: result.pdf_url, bookId: result.bookId }
                 });
             } else {
                 Alert.alert("Not Found", `Could not find a public domain PDF for "${query}". Please try another title.`);
