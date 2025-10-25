@@ -27,6 +27,7 @@ export default function EditProfileScreen() {
   const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
   const [readingGoal, setReadingGoal] = useState('');
   const [booksRead, setBooksRead] = useState('');
+  
   const [isLoading, setIsLoading] = useState(false);
   const { user } = useAuth();
 
@@ -38,14 +39,14 @@ export default function EditProfileScreen() {
       if (profileDoc.exists()) {
         const data = profileDoc.data();
         setBio(data.bio || '');
-        setSelectedGenres(data.favoriteGenres || []);
+        setSelectedGenres(data.favoriteGenres || []); // Loads favorite genres
         setReadingGoal(data.readingGoal?.toString() || '');
         setBooksRead(data.booksRead?.toString() || '');
       }
     } catch (error) {
       console.error('Error loading profile:', error);
     }
-  }, [user]);
+  }, [user]); // Dependency array only needs user
 
   useEffect(() => {
     if (user) {
@@ -61,14 +62,15 @@ export default function EditProfileScreen() {
 
       const profileData = {
         bio: bio.trim(),
-        favoriteGenres: selectedGenres,
+        favoriteGenres: selectedGenres, // Saves selected genres
         readingGoal: readingGoal ? parseInt(readingGoal) : null,
         booksRead: booksRead ? parseInt(booksRead) : 0,
-        updatedAt: new Date(),
+        // REMOVED: Saving lastReadBook
+        updatedAt: new Date(), // Consider using serverTimestamp() from 'firebase/firestore'
       };
 
       await setDoc(doc(db, 'users', user.uid), profileData, { merge: true });
-      
+
       Alert.alert('Success', 'Profile updated successfully!');
       router.back();
     } catch (error) {
@@ -80,8 +82,8 @@ export default function EditProfileScreen() {
   };
 
   const toggleGenre = (genre: string) => {
-    setSelectedGenres(prev => 
-      prev.includes(genre) 
+    setSelectedGenres(prev =>
+      prev.includes(genre)
         ? prev.filter(g => g !== genre)
         : [...prev, genre]
     );
@@ -89,7 +91,7 @@ export default function EditProfileScreen() {
 
   const renderGenreTag = (genre: string) => {
     const isSelected = selectedGenres.includes(genre);
-    
+
     return (
       <TouchableOpacity
         key={genre}
@@ -150,6 +152,7 @@ export default function EditProfileScreen() {
           <Text style={styles.characterCount}>{bio.length}/500</Text>
         </View>
 
+
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Favorite Genres</Text>
           <Text style={styles.sectionSubtitle}>
@@ -167,7 +170,6 @@ export default function EditProfileScreen() {
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Reading Goals</Text>
-          
           <View style={styles.inputGroup}>
             <Text style={styles.inputLabel}>Books to read this year</Text>
             <TextInput
@@ -179,7 +181,6 @@ export default function EditProfileScreen() {
               keyboardType="numeric"
             />
           </View>
-
           <View style={styles.inputGroup}>
             <Text style={styles.inputLabel}>Books read so far</Text>
             <TextInput
@@ -328,4 +329,4 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 8,
   },
-}); 
+});

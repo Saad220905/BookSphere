@@ -1,3 +1,6 @@
+import React from 'react';
+
+
 import { FontAwesome } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 import { useColorScheme } from 'react-native';
@@ -33,6 +36,14 @@ export default function TabLayout() {
           headerShown: false,
           tabBarIcon: ({ color }) => <FontAwesome name="book" size={24} color={color} />,
           tabBarLabel: 'Clubs',
+        }}
+      />
+      <Tabs.Screen
+        name="chat"
+        options={{
+          headerShown: false,
+          tabBarIcon: ({ color }) => <FontAwesome name="comments" size={24} color={color} />,
+          tabBarLabel: 'Chat',
         }}
       />
       <Tabs.Screen

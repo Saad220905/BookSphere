@@ -15,6 +15,8 @@ export interface UserProfile {
   booksRead: number;
   createdAt: Date;
   updatedAt: Date;
+  favoriteGenres?: string[];
+  friends?: string[];
 }
 
 export class UserProfileError extends Error {
@@ -129,6 +131,9 @@ export async function getUserProfile(uid: string): Promise<UserProfile | null> {
     throw new UserProfileError('Failed to get user profile');
   }
 }
+
+
+
 
 export async function updateUserProfile(uid: string, updates: Partial<UserProfile>): Promise<void> {
   if (!uid) {

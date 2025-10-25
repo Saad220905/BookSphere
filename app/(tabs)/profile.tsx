@@ -9,7 +9,7 @@ import UserAvatar from '../../components/UserAvatar';
 import { db } from '../../config/firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import { createMockUser, createMockProfile, createMockPosts } from '../../utils/mockData';
-
+import { Alert } from 'react-native'; // Import Alert
 interface UserProfile {
   bio?: string;
   favoriteGenres?: string[];
@@ -59,7 +59,8 @@ export default function ProfileScreen() {
       setIsLoading(false);
     }
   }, [user]);
-
+  
+  
   // Load posts (Firestore or mock)
   const loadUserPosts = useCallback(async () => {
     try {
@@ -409,3 +410,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
 });
+
+
+
+
