@@ -7,6 +7,7 @@ import PdfViewer from '../components/Pdfviewer';
 
 export default function ViewerScreen() {
   const { pdf_url , book_id , book_title } = useLocalSearchParams<{ pdf_url: string; book_id: string ; book_title?: string }>();
+  console.log(`${pdf_url} ${book_id} ${book_title}`)
   if (!pdf_url || !book_id) {
     return (
       <SafeAreaView style={styles.container}>
@@ -21,7 +22,7 @@ export default function ViewerScreen() {
   const pdfSource = { uri : pdf_url, cache: true };
   return (
     <SafeAreaView style={styles.container}>
-      <Stack.Screen options={{ title: headerTitle , headerShown: true, }} />
+      <Stack.Screen options={{ title: headerTitle , headerShown: true }} />
       <PdfViewer source={pdfSource} bookId={book_id} />
     </SafeAreaView>
   );

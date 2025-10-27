@@ -18,11 +18,18 @@ export default function SearchScreen() {
         setIsLoading(true);
         try {
             const result = await fetchBookPdfUrl(query);
-
+            // console.log(`${result.}`)
             if (result) {
                 router.push({
-                    pathname: "/viewer",
-                    params: { pdf_url: result.pdf_url, book_id: result.book_id , book_title: result.title }
+                    pathname: "/book-summary",
+                    params: { 
+                        title : result.title, 
+                        author: result.author, 
+                        publish_year: result.publish_year,
+                        cover_url: result.cover_url,
+                        pdf_url: result.pdf_url, 
+                        book_id: result.book_id
+                    }
                 });
             } else {
                 Alert.alert("Not Found", `Could not find a public domain PDF for "${query}". Please try another title.`);
