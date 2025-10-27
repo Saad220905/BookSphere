@@ -18,7 +18,6 @@ export default function SearchScreen() {
         setIsLoading(true);
         try {
             const result = await fetchBookPdfUrl(query);
-            // console.log(`${result.}`)
             if (result) {
                 router.push({
                     pathname: "/book-summary",
