@@ -31,7 +31,7 @@ export default function LoginScreen() {
     try {
       setLoading(true);
       await signIn(email, password);
-      router.replace('/(tabs)');
+      router.replace('/(tabs)/feed');
     } catch (error: any) {
       //const errorMessage = getFirebaseErrorMessage(error);
       //Alert.alert('Sign In Error', errorMessage);
