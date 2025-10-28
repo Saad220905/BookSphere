@@ -2,16 +2,15 @@ import React, { useState, useEffect, useRef } from 'react';
 import { StyleSheet, View, Dimensions, ActivityIndicator, Text, TouchableOpacity, KeyboardAvoidingView, Modal, TouchableWithoutFeedback, TextInput, Button } from 'react-native';
 import Pdf, { type PdfProps } from 'react-native-pdf'; // this error is not real, ignore
 import { updateBookPageCount } from '../utils/getBook';
+import { FontAwesome } from '@expo/vector-icons';
 
 // Comment imports
 import BookCommentsDisplay from './BookCommentsDisplay';
 import { listenForComments, addComment , Comment } from '../utils/bookComments';
 
 const CommentIcon = () => (
-  <View style={styles.iconContainer}>
-     <View style={styles.iconBubble}/>
-     <View style={styles.iconTail}/>
-  </View>
+
+  <FontAwesome name="comment" size={20} color="#666" />
 );
 
 interface PdfViewerProps {
@@ -226,27 +225,6 @@ const styles = StyleSheet.create({
     height: 28,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  iconBubble: {
-    width: 20,
-    height: 16,
-    borderWidth: 1.5,
-    borderColor: '#8e8e93', 
-    borderRadius: 8,
-  },
-  iconTail: {
-    width: 0,
-    height: 0,
-    borderLeftWidth: 5,  
-    borderRightWidth: 4, 
-    borderTopWidth: 6,  
-    borderLeftColor: 'transparent',
-    borderRightColor: 'transparent',
-    borderTopColor: '#8e8e93', 
-    position: 'absolute',
-    bottom: 1, 
-    left: 13, 
-    transform: [{ rotate: '-15deg' }]
   },
   modalBackdrop: {
     flex: 1,

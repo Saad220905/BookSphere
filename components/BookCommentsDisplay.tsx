@@ -1,3 +1,4 @@
+import { FontAwesome } from '@expo/vector-icons';
 import React from 'react';
 import { StyleSheet, View, Text, TextInput, Button, ScrollView, Platform, TouchableOpacity, KeyboardAvoidingView } from 'react-native';
 import { Comment, toggleLike } from '../utils/bookComments';
@@ -8,7 +9,7 @@ interface CommentSectionProps {
   comments: Comment[];
   onPostComment: (commentText: string) => void;
   onClose: () => void;
-  commentInputValue: string;        
+  commentInputValue: string;
   onCommentInputChange: (text: string) => void;
 }
 
@@ -33,10 +34,13 @@ const DownArrowIcon = () => (
   </View>
 );
 const HeartIcon = ({ liked }: { liked: boolean }) => (
-  // Using a filled heart for better contrast on a dark background
-  <Text style={{ fontSize: 20, color: liked ? '#ff3b30' : '#8e8e93' }}>
-    {liked ? '❤️' : '♡'}
-  </Text>
+  <FontAwesome
+    name={liked ? 'heart' : 'heart-o'} 
+    style={{ 
+      fontSize: 20, 
+      color: liked ? '#ff3b30' : '#8e8e93' 
+    }}
+  />
 );
 
 export default function BookCommentsDisplay({ bookId, currentUserId, comments, onPostComment, onClose, commentInputValue, onCommentInputChange }: CommentSectionProps) {
