@@ -1,4 +1,4 @@
-import { collection, query, where, getDocs, doc, setDoc, Firestore, updateDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, setDoc, Firestore, updateDoc, getDoc } from 'firebase/firestore';
 import { db } from '../config/firebase';
 
 interface OpenLibraryDoc {
@@ -184,16 +184,25 @@ export async function fetchBookPdfUrl(title: string): Promise<BookData | null>  
 
 
 /*
-* This function updates a book document in Firestore to add the total page count
+* This function updates a book document in Firestore to add the total page count, IF page_count doesn't already exist
 */
 export async function updateBookPageCount(bookId: string, pageCount: number): Promise<void> {
   try {
     const firestore = getFirestoreInstance();
     const bookDocRef = doc(firestore, 'books', bookId);
+    const docSnap = await getDoc(bookDocRef);
 
-    await updateDoc(bookDocRef, {
-      page_count: pageCount
-    });
+    if (docSnap.exists()) {
+      const bookData = docSnap.data();
+      if (bookData.page_count === undefined || bookData.page_count === null) {
+        await updateDoc(bookDocRef, {
+          page_count: pageCount
+        });
+        console.log(`Page count of ${pageCount} added for ${bookId}`);
+      } // Else, no page_count update needed
+    } else {
+      console.warn(`Book ID: ${bookId} not found. Cannot update page count.`);
+    }
   } catch (error) {
     console.error("Error updating page count:", error);
   }
