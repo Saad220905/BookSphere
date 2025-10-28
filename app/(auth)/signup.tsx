@@ -42,7 +42,7 @@ export default function SignupScreen() {
     try {
       setLoading(true);
       await signUp(email, password);
-      router.replace('/(tabs)');
+      router.replace("/create/profile");
     } catch (error: any) {
       //const errorMessage = getFirebaseErrorMessage(error);
       //Alert.alert('Sign Up Error', errorMessage);

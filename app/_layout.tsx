@@ -1,4 +1,5 @@
-import { Stack, Redirect} from 'expo-router';
+import React from 'react';
+import { Stack } from 'expo-router';
 import { useColorScheme } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import NetworkStatus from '../components/NetworkStatus';
@@ -13,18 +14,7 @@ export default function RootLayout() {
       <AuthProvider>
         <NotificationProvider>
           <NetworkStatus />
-          <Stack
-            screenOptions={{
-              headerShown: false,
-              headerStyle: {
-                backgroundColor: colorScheme === 'dark' ? '#000' : '#fff',
-              },
-              headerTintColor: colorScheme === 'dark' ? '#fff' : '#000',
-              headerShadowVisible: false,
-            }}
-
-          />
-          <Redirect href="/(tabs)/profile" />
+          <Stack screenOptions={{ headerShown: false }} />
         </NotificationProvider>
       </AuthProvider>
     </SafeAreaProvider>
