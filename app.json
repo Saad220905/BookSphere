@@ -34,7 +34,9 @@
       "expo-image-picker",
       "expo-media-library",
       "expo-audio",
-      "expo-video"
+      "expo-video",
+      "expo-font",
+      "expo-asset"
     ],
     "scheme": "booksphere"
   }

@@ -37,19 +37,19 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="profile"
-        options={{
-          headerShown: false,
-          tabBarIcon: ({ color }) => <FontAwesome name="user" size={24} color={color} />,
-          tabBarLabel: 'Profile',
-        }}
-      />
-      <Tabs.Screen
         name="search"
         options={{
           headerShown: false,
           tabBarIcon: ({ color }) => <FontAwesome name="search" size={24} color={color} />,
           tabBarLabel: 'Search',
+        }}
+      />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          headerShown: false,
+          tabBarIcon: ({ color }) => <FontAwesome name="user" size={24} color={color} />,
+          tabBarLabel: 'Profile',
         }}
       />
     </Tabs>
