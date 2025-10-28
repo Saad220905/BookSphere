@@ -12,7 +12,7 @@ export interface Comment {
   createdAt: any; 
   likeCount: number; 
   likedBy: string[];  
-  sentiment?: 'Positive' | 'Negative' | 'Neutral' | 'AnalysisError';
+  sentiment: 'Positive' | 'Negative' | 'Neutral' | 'AnalysisError';
 }
 
 class CommentError extends Error {
@@ -47,6 +47,7 @@ export function listenForComments(bookId: string, page: number, callback: (comme
         createdAt: data.createdAt,
         likeCount: data.likeCount || 0,
         likedBy: data.likedBy || [],
+        sentiment: data.sentiment as Comment['sentiment'] || 'AnalysisError',
       } as Comment);
     });
     // Sort by likes then creation time
