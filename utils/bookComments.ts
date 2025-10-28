@@ -10,6 +10,7 @@ export interface Comment {
   createdAt: any; 
   likeCount: number; 
   likedBy: string[];  
+  sentiment?: 'Positive' | 'Negative' | 'Neutral' | 'AnalysisError';
 }
 
 class CommentError extends Error {
