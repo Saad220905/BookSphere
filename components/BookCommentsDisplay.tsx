@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import { FontAwesome } from '@expo/vector-icons';
+import React from 'react';
 import { StyleSheet, View, Text, TextInput, Button, ScrollView, Platform, TouchableOpacity, KeyboardAvoidingView } from 'react-native';
 import { Comment, toggleLike } from '../utils/bookComments';
 
@@ -8,7 +9,24 @@ interface CommentSectionProps {
   comments: Comment[];
   onPostComment: (commentText: string) => void;
   onClose: () => void;
+  commentInputValue: string;
+  onCommentInputChange: (text: string) => void;
 }
+
+// --- NEW HELPER FUNCTION ---
+const getSentimentDisplay = (sentiment: Comment['sentiment']) => {
+  switch (sentiment) {
+    case 'Positive':
+      return { emoji: '😀 Positive', color: '#00cc00' }; // Bright Green
+    case 'Negative':
+      return { emoji: '😠 Negative', color: '#ff3b30' }; // Bright Red
+    case 'Neutral':
+      return { emoji: '😐 Neutral', color: '#ffcc00' }; // Yellow/Gold
+    case 'AnalysisError':
+    default:
+      return { emoji: '❓ Error', color: '#8e8e93' }; // Dark Gray
+  }
+};
 
 const DownArrowIcon = () => (
   <View style={{ width: 24, height: 24, justifyContent: 'center', alignItems: 'center' }}>
@@ -16,23 +34,25 @@ const DownArrowIcon = () => (
   </View>
 );
 const HeartIcon = ({ liked }: { liked: boolean }) => (
-    <Text style={{ fontSize: 20, color: liked ? '#ff3b30' : '#8e8e93' }}>
-      ★
-    </Text>
+  <FontAwesome
+    name={liked ? 'heart' : 'heart-o'} 
+    style={{ 
+      fontSize: 20, 
+      color: liked ? '#ff3b30' : '#8e8e93' 
+    }}
+  />
 );
 
-export default function BookCommentsDisplay({ bookId, currentUserId, comments, onPostComment, onClose }: CommentSectionProps) {
-  const [newComment, setNewComment] = useState('');
+export default function BookCommentsDisplay({ bookId, currentUserId, comments, onPostComment, onClose, commentInputValue, onCommentInputChange }: CommentSectionProps) {
 
   const handlePost = () => {
-    if (newComment.trim() === '') return;
-    onPostComment(newComment);
-    setNewComment('');
+    if (commentInputValue.trim() === '') return;
+    onPostComment(commentInputValue);
   };
 
   return (
     <KeyboardAvoidingView
-      behavior={"padding"}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
       style={styles.modalContainer}
       keyboardVerticalOffset={10}
     >
@@ -52,11 +72,19 @@ export default function BookCommentsDisplay({ bookId, currentUserId, comments, o
         ) : (
           comments.map((comment) => {
             const isLikedByUser = Array.isArray(comment.likedBy) && comment.likedBy.includes(currentUserId);
+            // --- USE HELPER TO GET SENTIMENT INFO ---
+            const { emoji, color } = getSentimentDisplay(comment.sentiment);
+            
             return (
               <View key={comment.id} style={styles.commentItemContainer}>
                 {/* Left side: user info and comment content */}
                 <View style={styles.commentContent}>
-                  <Text style={styles.commentUser}>{comment.userId}</Text>
+                  {/* --- NEW USER/SENTIMENT LINE --- */}
+                  <View style={styles.userLine}>
+                    <Text style={styles.commentUser}>{comment.userId}</Text>
+                    <Text style={[styles.sentimentText, { color: color }]}>{emoji}</Text>
+                  </View>
+                  {/* ---------------------------------- */}
                   <Text style={styles.commentText}>{comment.text}</Text>
                 </View>
                 {/* Right side: like button and like count */}
@@ -81,10 +109,10 @@ export default function BookCommentsDisplay({ bookId, currentUserId, comments, o
           style={styles.textInput}
           placeholder="Add a comment..."
           placeholderTextColor="#8e8e93"
-          value={newComment}
-          onChangeText={setNewComment}
+          value={commentInputValue}
+          onChangeText={onCommentInputChange}
         />
-        <Button title="Post" onPress={handlePost} disabled={!newComment.trim()} />
+        <Button title="Post" onPress={handlePost} disabled={!commentInputValue.trim()} />
       </View>
     </KeyboardAvoidingView>
   );
@@ -130,10 +158,26 @@ const styles = StyleSheet.create({
     flex: 1, 
     marginRight: 15 
   },
+  // --- NEW STYLE FOR USER AND SENTIMENT ---
+  userLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
   commentUser: { 
     fontWeight: 'bold', 
     color: '#fff', 
-    marginBottom: 4 
+    // Removed marginBottom: 4 because it's now in userLine
+  },
+  // --- NEW STYLE FOR SENTIMENT TEXT ---
+  sentimentText: {
+    fontSize: 12,
+    fontWeight: '600',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    backgroundColor: '#3a3a3c', // Dark background for the tag
   },
   commentText: { 
     color: '#fff', 

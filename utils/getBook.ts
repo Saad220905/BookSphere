@@ -1,4 +1,4 @@
-import { collection, query, where, getDocs, doc, setDoc, Firestore, updateDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, setDoc, Firestore, updateDoc, getDoc } from 'firebase/firestore';
 import { db } from '../config/firebase';
 
 interface OpenLibraryDoc {
@@ -7,6 +7,7 @@ interface OpenLibraryDoc {
     ia?: string[]; 
     author_name?: string[];
     first_publish_year?: number;
+    cover_i?: number;
 }
 
 interface OpenLibraryResponse {
@@ -39,11 +40,20 @@ function getFirestoreInstance(): Firestore {
   return db;
 }
 
+export interface BookData {
+  title: string;
+  author: string;
+  publish_year: any;
+  cover_url: any;
+  pdf_url: string;
+  book_id: string; 
+}
+
 /**
  * This function performs API calls to OpenLibrary and Internet Archive
  * to find a public domain PDF for a given book title.
  */
-export async function fetchBookPdfUrl(title: string): Promise<{ pdf_url: string; bookId: string; } | null>  {
+export async function fetchBookPdfUrl(title: string): Promise<BookData | null>  {
     console.log(`Searching for PDF URL for '${title}'...`);
 
     try {
@@ -52,7 +62,7 @@ export async function fetchBookPdfUrl(title: string): Promise<{ pdf_url: string;
         const booksCollectionRef = collection(firestore, 'books')
 
         const normalizedTitle = title.toLowerCase().trim();
-        const q = query(booksCollectionRef, where('title', '==', normalizedTitle));
+        const q = query(booksCollectionRef, where('search_title', '==', normalizedTitle));
         const querySnapshot = await getDocs(q);
 
         if (!querySnapshot.empty) {
@@ -60,8 +70,15 @@ export async function fetchBookPdfUrl(title: string): Promise<{ pdf_url: string;
             const bookDoc = querySnapshot.docs[0];
             const bookData = bookDoc.data();
             console.log(`Found '${bookData.title}' in Firebase.`);
-            console.log(`${bookData.pdf_url} , ${bookData.book_id}`);
-            return { pdf_url: bookData.pdf_url, bookId: bookData.book_id };
+            // console.log(`${bookData.pdf_url} , ${bookData.book_id}`);
+            return { 
+              title: bookData.title,
+              author: bookData.author, 
+              publish_year: bookData.publish_year,
+              cover_url: bookData.cover_url,
+              pdf_url: bookData.pdf_url,
+              book_id: bookData.book_id, 
+            };
 
         }
         
@@ -76,7 +93,7 @@ export async function fetchBookPdfUrl(title: string): Promise<{ pdf_url: string;
         for (const doc of olData.docs || []) {
             const apiTitle = (doc.title || '').toLowerCase();
             // Find the best match that is public and has an Internet Archive link
-            if (doc.ebook_access === 'public' && doc.ia && apiTitle.includes(title.toLowerCase())) {
+            if (doc.ebook_access === 'public' && doc.ia && apiTitle.includes(normalizedTitle)) {
                 bookCandidate = doc;
                 break; // Use the first suitable candidate
             }
@@ -90,6 +107,7 @@ export async function fetchBookPdfUrl(title: string): Promise<{ pdf_url: string;
         // Step 3: Verify a PDF copy exists in the Internet Archive link
         let pdfUrl: string | null = null;
         let workingId: string | null = null;
+        let coverUrl: string | null = null;
         for (const identifier of bookCandidate.ia) {
             try {
                 const metaUrl = `https://archive.org/metadata/${identifier}`;
@@ -103,6 +121,7 @@ export async function fetchBookPdfUrl(title: string): Promise<{ pdf_url: string;
                     if (pdfFile) {
                         pdfUrl = `https://archive.org/download/${identifier}/${encodeURIComponent(pdfFile.name)}`;
                         workingId = identifier;
+                        coverUrl = `https://covers.openlibrary.org/b/id/${bookCandidate.cover_i}-M.jpg`;
                         console.log(`Successfully found PDF URL: ${pdfUrl}`);
                         break; // We found a valid PDF, no need to check other identifiers
                     }
@@ -119,27 +138,42 @@ export async function fetchBookPdfUrl(title: string): Promise<{ pdf_url: string;
         }
         
         // Step 4 : Final check against Firebase to prevent duplicate titles
-        const finalCheckQuery = query(booksCollectionRef, where('title', '==', bookCandidate.title.toLowerCase().trim()));
+        const finalCheckQuery = query(booksCollectionRef, where('search_title', '==', bookCandidate.title.toLowerCase().trim()));
         const finalCheckSnapshot = await getDocs(finalCheckQuery);
         
         if (finalCheckSnapshot.empty) {
             const bookDocRef = doc(firestore, 'books', workingId);
-
             const newBookData = {
-                title: bookCandidate.title.toLowerCase().trim(), 
+                title: bookCandidate.title, 
                 author: bookCandidate.author_name ? bookCandidate.author_name.join(', ') : 'N/A',
                 publish_year: bookCandidate.first_publish_year || 'N/A',
+                cover_url: coverUrl,
                 pdf_url: pdfUrl,
                 book_id: workingId,
+                search_title: bookCandidate.title.toLowerCase().trim(),
             };
             await setDoc(bookDocRef, newBookData);
             console.log(`Successfully ADDED '${newBookData.title}' to Firebase.`);
-            return { pdf_url: pdfUrl , bookId: workingId };
+            return { 
+              title: newBookData.title,
+              author: newBookData.author,
+              publish_year: newBookData.publish_year,
+              cover_url: coverUrl,
+              pdf_url: pdfUrl, 
+              book_id: workingId, 
+            };
         } else {
             const existingDoc = finalCheckSnapshot.docs[0];
             const existingData = existingDoc.data();
             console.log(`'${bookCandidate.title}' already exists in Firebase. Skipping add.`);
-            return { pdf_url: existingData.pdf_url , bookId: existingData.book_id};
+            return { 
+              title: existingData.title,
+              author: existingData.author,
+              publish_year: existingData.publish_year,
+              cover_url: existingData.cover_url, 
+              pdf_url: existingData.pdf_url,
+              book_id: existingData.book_id,
+            };
         }
 
     } catch (err) {
@@ -150,16 +184,25 @@ export async function fetchBookPdfUrl(title: string): Promise<{ pdf_url: string;
 
 
 /*
-* This function updates a book document in Firestore to add the total page count
+* This function updates a book document in Firestore to add the total page count, IF page_count doesn't already exist
 */
 export async function updateBookPageCount(bookId: string, pageCount: number): Promise<void> {
   try {
     const firestore = getFirestoreInstance();
     const bookDocRef = doc(firestore, 'books', bookId);
+    const docSnap = await getDoc(bookDocRef);
 
-    await updateDoc(bookDocRef, {
-      page_count: pageCount
-    });
+    if (docSnap.exists()) {
+      const bookData = docSnap.data();
+      if (bookData.page_count === undefined || bookData.page_count === null) {
+        await updateDoc(bookDocRef, {
+          page_count: pageCount
+        });
+        console.log(`Page count of ${pageCount} added for ${bookId}`);
+      } // Else, no page_count update needed
+    } else {
+      console.warn(`Book ID: ${bookId} not found. Cannot update page count.`);
+    }
   } catch (error) {
     console.error("Error updating page count:", error);
   }
