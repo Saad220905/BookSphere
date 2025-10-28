@@ -21,6 +21,9 @@ export const analyzeCommentSentiment = functions.firestore
 
     // 2. Get the API Key from the legacy config object
     // This is the billing-free alternative!
+
+
+    
     const config = functions.config();
     const GEMINI_API_KEY = config.gemini.apikey;
 
