@@ -1,7 +1,8 @@
 import { FontAwesome } from '@expo/vector-icons';
-import React from 'react';
-import { StyleSheet, View, Text, TextInput, Button, ScrollView, Platform, TouchableOpacity, KeyboardAvoidingView } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { StyleSheet, View, Text, TextInput, Button, ScrollView, Platform, TouchableOpacity, KeyboardAvoidingView, Image } from 'react-native';
 import { Comment, toggleLike } from '../utils/bookComments';
+import { UserProfile, getUserProfile } from '../utils/userProfile';
 
 interface CommentSectionProps {
   bookId: string;
@@ -43,6 +44,59 @@ const HeartIcon = ({ liked }: { liked: boolean }) => (
   />
 );
 
+const CommentItem = ({ comment, bookId, currentUserId }: { comment: Comment, bookId: string, currentUserId: string }) => {
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+
+  useEffect(() => {
+    // Fetch the profile for this userId
+    if (comment.userId && comment.userId !== 'anonymous_user') {
+      getUserProfile(comment.userId)
+        .then(profile => {
+          if (profile) {
+            setUserProfile(profile);
+          }
+        })
+        .catch(err => console.error(`Failed to get profile for ${comment.userId}`, err));
+    }
+  }, [comment.userId]); 
+
+  const isLikedByUser = Array.isArray(comment.likedBy) && comment.likedBy.includes(currentUserId);
+  const { emoji, color } = getSentimentDisplay(comment.sentiment);
+
+  // Use the fetched displayName, or fallback to "Anonymous"
+  const displayName = userProfile?.displayName || (comment.userId === 'anonymous_user' ? 'Anonymous' : '...');
+  // Use user's photoURL OR fallback to UI-AVATARS
+  const photoURL = userProfile?.photoURL 
+    ? { uri: userProfile.photoURL } 
+    : { uri : `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}` };
+
+  return (
+    <View style={styles.commentItemContainer}>
+      <Image source={photoURL} style={styles.profilePic} />
+
+      {/* Left side: user info and comment content */}
+      <View style={styles.commentContent}>
+        <View style={styles.userLine}>
+          {/* --- USE 'displayName' --- */}
+          <Text style={styles.commentUser}>{displayName}</Text>
+          <Text style={[styles.sentimentText, { color: color }]}>{emoji}</Text>
+        </View>
+        <Text style={styles.commentText}>{comment.text}</Text>
+      </View>
+      {/* Right side: like button and like count */}
+      <TouchableOpacity
+        onPress={() => toggleLike(bookId, comment.id, currentUserId)}
+        style={styles.likeButtonContainer}
+      >
+        <HeartIcon liked={isLikedByUser} />
+        {comment.likeCount > 0 && (
+          <Text style={styles.likeCount}>{comment.likeCount}</Text>
+        )}
+      </TouchableOpacity>
+    </View>
+  );
+};
+
 export default function BookCommentsDisplay({ bookId, currentUserId, comments, onPostComment, onClose, commentInputValue, onCommentInputChange }: CommentSectionProps) {
 
   const handlePost = () => {
@@ -70,36 +124,14 @@ export default function BookCommentsDisplay({ bookId, currentUserId, comments, o
         {comments.length === 0 ? (
           <Text style={styles.noCommentsText}>Be the first to comment.</Text>
         ) : (
-          comments.map((comment) => {
-            const isLikedByUser = Array.isArray(comment.likedBy) && comment.likedBy.includes(currentUserId);
-            // --- USE HELPER TO GET SENTIMENT INFO ---
-            const { emoji, color } = getSentimentDisplay(comment.sentiment);
-            
-            return (
-              <View key={comment.id} style={styles.commentItemContainer}>
-                {/* Left side: user info and comment content */}
-                <View style={styles.commentContent}>
-                  {/* --- NEW USER/SENTIMENT LINE --- */}
-                  <View style={styles.userLine}>
-                    <Text style={styles.commentUser}>{comment.userId}</Text>
-                    <Text style={[styles.sentimentText, { color: color }]}>{emoji}</Text>
-                  </View>
-                  {/* ---------------------------------- */}
-                  <Text style={styles.commentText}>{comment.text}</Text>
-                </View>
-                {/* Right side: like button and like count */}
-                <TouchableOpacity
-                  onPress={() => toggleLike(bookId, comment.id, currentUserId)}
-                  style={styles.likeButtonContainer}
-                >
-                  <HeartIcon liked={isLikedByUser} />
-                  {comment.likeCount > 0 && (
-                    <Text style={styles.likeCount}>{comment.likeCount}</Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-            );
-          })
+          comments.map((comment) => (
+            <CommentItem
+              key={comment.id}
+              comment={comment}
+              bookId={bookId}
+              currentUserId={currentUserId}
+            />
+          ))
         )}
       </ScrollView>
 
@@ -209,5 +241,12 @@ const styles = StyleSheet.create({
     marginRight: 10,
     color: '#fff',
     fontSize: 16,
+  },
+  profilePic: {
+    width: 40,
+    height: 40,
+    borderRadius: 20, 
+    marginRight: 10,
+    backgroundColor: '#3a3a3c', 
   },
 });
