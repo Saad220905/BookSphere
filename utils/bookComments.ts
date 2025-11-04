@@ -29,50 +29,6 @@ function getFirestoreInstance(): Firestore {
   return db;
 }
 
-// New function to calculate the overall sentiment score per page
-function calculatePageSentiment(comments: Comment[]): 'Positive' | 'Negative' | 'Neutral' | 'Mixed' {
-  if (comments.length === 0) {
-    return 'Neutral'; // No comments means neutral mood
-  }
-
-  // 1. Assign numerical weights
-  let totalScore = 0;
-  let validCount = 0;
-
-  const sentimentWeights: { [key: string]: number } = {
-    'Positive': 2,
-    'Neutral': 0,
-    'Negative': -2,
-    'AnalysisError': 0, // Errors don't influence the page score
-  };
-
-  comments.forEach(comment => {
-    const sentiment = comment.sentiment || 'AnalysisError';
-    totalScore += sentimentWeights[sentiment];
-    if (sentiment !== 'AnalysisError') {
-        validCount++;
-    }
-  });
-
-  if (validCount === 0) {
-      return 'Neutral'; // All comments were errors
-  }
-
-  // 2. Determine the average score
-  const averageScore = totalScore / validCount;
-
-  // 3. Map score to final sentiment string
-  if (averageScore > 1.0) {
-    return 'Positive';
-  } else if (averageScore < -1.0) {
-    return 'Negative';
-  } else if (Math.abs(averageScore) <= 0.5) {
-    return 'Neutral';
-  } else {
-    return 'Mixed'; // A mix of strong positive and negative comments
-  }
-}
-
 export function listenForComments(bookId: string, page: number, callback: (comments: Comment[]) => void) {
   const firestore = getFirestoreInstance();
   const commentsRef = collection(firestore, `books/${bookId}/comments`);
@@ -96,14 +52,7 @@ export function listenForComments(bookId: string, page: number, callback: (comme
     });
     // Sort by likes then creation time
     comments.sort((a, b) => (b.likeCount - a.likeCount) || (b.createdAt?.seconds - a.createdAt?.seconds));
-
-    //Modification/Addition for overall page scoring
-    // Calculate the overall sentiment
-    const pageSentiment = calculatePageSentiment(comments);
-
-    // Pass BOTH the comments and the new pageSentiment to the frontend
-    callback(comments, pageSentiment);
-    //callback(comments);
+    callback(comments);
   }, (error) => {
     console.error("Error listening for comments: ", error);
   });
