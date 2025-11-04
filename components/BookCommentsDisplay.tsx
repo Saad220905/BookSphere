@@ -66,9 +66,7 @@ const CommentItem = ({ comment, bookId, currentUserId }: { comment: Comment, boo
   // Use the fetched displayName, or fallback to "Anonymous"
   const displayName = userProfile?.displayName || (comment.userId === 'anonymous_user' ? 'Anonymous' : '...');
   // Use user's photoURL OR fallback to UI-AVATARS
-  const photoURL = userProfile?.photoURL 
-    ? { uri: userProfile.photoURL } 
-    : { uri : `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}` };
+  const photoURL =  { uri: `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}` };
 
   return (
     <View style={styles.commentItemContainer}>
