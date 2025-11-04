@@ -109,7 +109,7 @@ export default function ClubsScreen() {
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Book Clubs</Text>
-        <TouchableOpacity onPress={() => router.push('/clubs/create')}>
+        <TouchableOpacity onPress={() => router.push('/create/club')}>
           <FontAwesome name="plus" size={24} color="#0a7ea4" />
         </TouchableOpacity>
       </View>
@@ -131,7 +131,7 @@ export default function ClubsScreen() {
             </Text>
             <TouchableOpacity
               style={styles.createClubButton}
-              onPress={() => router.push('/clubs/create')}
+              onPress={() => router.push('/create/club')}
             >
               <Text style={styles.createClubButtonText}>Create Your First Club</Text>
             </TouchableOpacity>

@@ -234,10 +234,10 @@ export default function CreateProfile() {
             onChangeText={setDisplayName}
             placeholder="Enter your name"
             placeholderTextColor="#999"
-            maxLength={50}
+            maxLength={8}
           />
           {displayName.length > 0 && (
-            <Text style={styles.characterCount}>{displayName.length}/50</Text>
+            <Text style={styles.characterCount}>{displayName.length}/8</Text>
           )}
         </View>
 
@@ -254,10 +254,10 @@ export default function CreateProfile() {
             placeholder="I love reading because..."
             placeholderTextColor="#999"
             multiline
-            maxLength={500}
+            maxLength={100}
             textAlignVertical="top"
           />
-          <Text style={styles.characterCount}>{bio.length}/500</Text>
+          <Text style={styles.characterCount}>{bio.length}/100</Text>
         </View>
 
         <View style={styles.section}>
