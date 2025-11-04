@@ -104,7 +104,7 @@ npx expo run:android
 ## 🏗️ Project Structure
 
 ```
-booknest/
+booksphere/
 ├── app/                    # Expo Router screens
 │   ├── (auth)/            # Authentication screens
 │   ├── (tabs)/            # Main tab navigation
