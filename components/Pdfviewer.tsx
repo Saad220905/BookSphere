@@ -3,6 +3,7 @@ import { StyleSheet, View, Dimensions, ActivityIndicator, Text, TouchableOpacity
 import Pdf, { type PdfDocumentProps } from 'react-native-pdf'; // this error is not real, ignore
 import { updateBookPageCount } from '../utils/getBook';
 import { FontAwesome } from '@expo/vector-icons';
+import { auth } from '../config/firebase';
 
 // Comment imports
 import BookCommentsDisplay from './BookCommentsDisplay';
@@ -30,6 +31,9 @@ export default function PdfViewer({ source, bookId }: PdfViewerProps) {
   const [newComment, setNewComment] = useState('');
   const textInputRef = useRef<TextInput>(null);
   
+  // User stuff
+  const currentUserId = auth.currentUser?.uid || 'anonymous_user';
+  
   useEffect(() => {
     if (!bookId || !currentPage) return;
 
@@ -45,7 +49,7 @@ export default function PdfViewer({ source, bookId }: PdfViewerProps) {
   const handlePostComment = (textFromInput?: string) => {
     const commentText = textFromInput ?? newComment;
     if (commentText.trim() === '') { return; }
-    addComment(bookId, currentPage, commentText, "testing123"); // CHANGE LATER
+    addComment(bookId, currentPage, commentText, currentUserId); 
     setNewComment(''); 
     textInputRef.current?.blur(); 
   };
@@ -137,7 +141,7 @@ export default function PdfViewer({ source, bookId }: PdfViewerProps) {
             <View style={styles.modalContentContainer}>
               <BookCommentsDisplay
                 bookId={bookId}
-                currentUserId={"testing123"} // CHANGE LATER
+                currentUserId={currentUserId} // CHANGE LATER
                 comments={comments}
                 onPostComment={handlePostComment}
                 onClose={() => setIsCommentSectionVisible(false)}
