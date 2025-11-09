@@ -13,7 +13,10 @@ export interface Comment {
   likeCount: number; 
   likedBy: string[];  
   sentiment: 'Positive' | 'Negative' | 'Neutral' | 'AnalysisError';
+  isSpoiler: boolean;
 }
+
+export type PageSentiment = 'Positive' | 'Negative' | 'Neutral' | 'Mixed';
 
 class CommentError extends Error {
   constructor(message: string) {
@@ -73,7 +76,7 @@ function calculatePageSentiment(comments: Comment[]): 'Positive' | 'Negative' | 
   }
 }
 
-export function listenForComments(bookId: string, page: number, callback: (comments: Comment[]) => void) {
+export function listenForComments(bookId: string, page: number, callback: (comments: Comment[], pageSentiment: PageSentiment) => void) {
   const firestore = getFirestoreInstance();
   const commentsRef = collection(firestore, `books/${bookId}/comments`);
   const q = query(commentsRef, where('page', '==', page));
@@ -92,6 +95,7 @@ export function listenForComments(bookId: string, page: number, callback: (comme
         likeCount: data.likeCount || 0,
         likedBy: data.likedBy || [],
         sentiment: data.sentiment as Comment['sentiment'] || 'AnalysisError',
+        isSpoiler: data.isSpoiler || false,
       } as Comment);
     });
     // Sort by likes then creation time
@@ -111,7 +115,7 @@ export function listenForComments(bookId: string, page: number, callback: (comme
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
-export async function addComment(bookId: string, page: number, text: string, userId: string) {
+export async function addComment(bookId: string, page: number, text: string, userId: string, isSpoiler: boolean) {
   const firestore = getFirestoreInstance();
   const commentsRef = collection(firestore, `books/${bookId}/comments`);
 
@@ -169,6 +173,7 @@ export async function addComment(bookId: string, page: number, text: string, use
     likedBy: [],
     // --- 3. SAVE COMMENT AND SENTIMENT TO FIRESTORE ---
     sentiment: sentimentResult,
+    isSpoiler: isSpoiler,
   });
 }
 

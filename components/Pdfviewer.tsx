@@ -7,10 +7,9 @@ import { auth } from '../config/firebase';
 
 // Comment imports
 import BookCommentsDisplay from './BookCommentsDisplay';
-import { listenForComments, addComment , Comment } from '../utils/bookComments';
+import { listenForComments, addComment , Comment , PageSentiment } from '../utils/bookComments';
 
 const CommentIcon = () => (
-
   <FontAwesome name="comment" size={20} color="#666" />
 );
 
@@ -30,16 +29,19 @@ export default function PdfViewer({ source, bookId }: PdfViewerProps) {
   const [isCommentSectionVisible, setIsCommentSectionVisible] = useState(false);
   const [newComment, setNewComment] = useState('');
   const textInputRef = useRef<TextInput>(null);
+  const [isSpoiler, setIsSpoiler] = useState(false);
   
   // User stuff
   const currentUserId = auth.currentUser?.uid || 'anonymous_user';
+  const [pageSentiment, setPageSentiment] = useState<PageSentiment>('Neutral');
   
   useEffect(() => {
     if (!bookId || !currentPage) return;
 
     // Start listening for comments on the current page of the current book
-    const unsubscribe = listenForComments(bookId, currentPage, (newComments) => {
+    const unsubscribe = listenForComments(bookId, currentPage, (newComments, newPageSentiment) => {
       setComments(newComments);
+      setPageSentiment(newPageSentiment);
     });
 
     // Stops listening for comments when the page or book changes
@@ -49,8 +51,9 @@ export default function PdfViewer({ source, bookId }: PdfViewerProps) {
   const handlePostComment = (textFromInput?: string) => {
     const commentText = textFromInput ?? newComment;
     if (commentText.trim() === '') { return; }
-    addComment(bookId, currentPage, commentText, currentUserId); 
+    addComment(bookId, currentPage, commentText, currentUserId, isSpoiler); 
     setNewComment(''); 
+    setIsSpoiler(false);
     textInputRef.current?.blur(); 
   };
 
@@ -119,6 +122,11 @@ export default function PdfViewer({ source, bookId }: PdfViewerProps) {
             onChangeText={setNewComment}
             multiline={true}
           />
+
+          <TouchableOpacity style={styles.spoilerToggle} onPress={() => setIsSpoiler(!isSpoiler)}>
+            <FontAwesome name={isSpoiler ? 'eye-slash' : 'eye'} size={20} color={isSpoiler ? '#007AFF' : '#8e8e93'} />
+          </TouchableOpacity>
+
           <Button title="Post" onPress={() => handlePostComment()} disabled={!newComment.trim()} />
         </View>
         )}
@@ -141,12 +149,15 @@ export default function PdfViewer({ source, bookId }: PdfViewerProps) {
             <View style={styles.modalContentContainer}>
               <BookCommentsDisplay
                 bookId={bookId}
-                currentUserId={currentUserId} // CHANGE LATER
+                currentUserId={currentUserId} 
                 comments={comments}
                 onPostComment={handlePostComment}
                 onClose={() => setIsCommentSectionVisible(false)}
                 commentInputValue={newComment}
                 onCommentInputChange={setNewComment}
+                pageSentiment={pageSentiment}
+                isSpoiler={isSpoiler}
+                setIsSpoiler={setIsSpoiler}
               />
             </View>
           </TouchableWithoutFeedback>
@@ -241,5 +252,9 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     overflow: 'hidden',
+  },
+  spoilerToggle: {
+    padding: 8,
+    marginRight: 8,
   },
 });
