@@ -2,6 +2,7 @@ import NetInfo, { NetInfoState } from '@react-native-community/netinfo';
 import React, { useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Text } from './Themed';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface NetworkStatusProps {
   showOnlyWhenOffline?: boolean;
@@ -9,6 +10,7 @@ interface NetworkStatusProps {
 
 export default function NetworkStatus({ showOnlyWhenOffline = true }: NetworkStatusProps) {
   const [isConnected, setIsConnected] = useState<boolean | null>(null);
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     const unsubscribe = NetInfo.addEventListener((state: NetInfoState) => {
@@ -23,18 +25,22 @@ export default function NetworkStatus({ showOnlyWhenOffline = true }: NetworkSta
     return unsubscribe;
   }, []);
 
-  // Don't show anything if we're connected and showOnlyWhenOffline is true
   if (showOnlyWhenOffline && isConnected !== false) {
     return null;
   }
 
-  // Don't show anything if we haven't determined connection status yet
   if (isConnected === null) {
     return null;
   }
 
   return (
-    <View style={[styles.container, isConnected ? styles.online : styles.offline]}>
+    <View
+      style={[
+        styles.container,
+        isConnected ? styles.online : styles.offline,
+        { top: insets.top }, // position below the notch
+      ]}
+    >
       <Text style={[styles.text, isConnected ? styles.onlineText : styles.offlineText]}>
         {isConnected ? 'Online' : 'Offline - Check your internet connection'}
       </Text>
@@ -44,9 +50,12 @@ export default function NetworkStatus({ showOnlyWhenOffline = true }: NetworkSta
 
 const styles = StyleSheet.create({
   container: {
+    position: 'absolute', // overlay
+    left: 0,
+    right: 0,
+    zIndex: 1000, // make sure it's above other content
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 16,
     paddingVertical: 8,
   },
   offline: {
@@ -65,4 +74,4 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
   },
-}); 
+});
