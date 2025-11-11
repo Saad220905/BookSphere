@@ -2,6 +2,7 @@ import { User, createUserWithEmailAndPassword, signOut as firebaseSignOut, signI
 import { createContext, useContext, useEffect, useState } from 'react';
 import { auth } from '../config/firebase';
 import { UserProfile, createUserProfile, getUserProfile } from '../utils/userProfile';
+import React from 'react';
 
 interface AuthContextType {
   user: User | null;
