@@ -1,6 +1,6 @@
 import { FontAwesome } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { collection, doc, getDoc, getDocs, orderBy, query, where } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, orderBy, query, where, addDoc } from 'firebase/firestore';
 import React, { useCallback, useEffect, useState } from 'react';
 import { FlatList, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -38,6 +38,17 @@ interface UserRecommendation {
   recommendedAt: any;
   note?: string; 
 }
+
+const createMockRecommendations = (count: number = 3): UserRecommendation[] => {
+    return Array.from({ length: count }, (_, i) => ({
+        id: `rec-${i}`,
+        bookTitle: `The Mocked Book ${i + 1}`,
+        bookAuthor: `Author Placeholder`,
+        recommenderName: i % 2 === 0 ? "Jane Doe" : "John Smith",
+        recommendedAt: new Date(Date.now() - (i * 86400000)), // Days ago
+        note: i === 1 ? "A truly life-changing read! Highly recommend the first 50 pages." : undefined,
+    }));
+};
 
 export default function ProfileScreen() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -96,6 +107,37 @@ export default function ProfileScreen() {
       setUserPosts(createMockPosts(5));
     }
   }, [user]);
+
+  const loadUserRecommendations = useCallback(async () => {
+    try {
+      if (!db || !user) {
+        setUserRecommendations(createMockRecommendations(3));
+        return;
+      }
+
+      const recommendationsQuery = query(
+        collection(db, 'recommendations'),
+        where('recipientId', '==', user.uid),
+        orderBy('recommendedAt', 'desc')
+      );
+      
+      const snapshot = await getDocs(recommendationsQuery);
+      const recommendationsData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+      })) as UserRecommendation[];
+
+      setUserRecommendations(recommendationsData);
+    } catch (error) {
+      console.warn('Using mock recommendations due to error:', error);
+      setUserRecommendations(createMockRecommendations(3));
+    }
+  }, [user]);
+
+  const navigateToSendRecommendation = () => {
+    // We are routing to a new page where the user will select book/friend
+    router.push('/recommendation/send'); 
+  };
 
   // Initialize profile + posts
   useEffect(() => {
@@ -192,6 +234,10 @@ export default function ProfileScreen() {
       <ScrollView style={styles.scrollView}>
         <View style={styles.header}>
           <Text style={styles.title}>Profile</Text>
+          <View style={{ flexDirection: 'row', gap: 50 }}></View>
+          <TouchableOpacity onPress={navigateToSendRecommendation}>
+              <FontAwesome name="send" size={24} color="#0a7ea4" />
+          </TouchableOpacity>
           <TouchableOpacity onPress={() => router.push('/profile/edit')}>
             <FontAwesome name="cog" size={24} color="#666" />
           </TouchableOpacity>
@@ -264,7 +310,7 @@ export default function ProfileScreen() {
             renderItem={renderRecommendation}
             keyExtractor={(item) => item.id}
             scrollEnabled={false}
-            contentContainerStyle={styles.postsList} // Re-using existing style
+            contentContainerStyle={styles.postsList}
             ListEmptyComponent={() => (
               <View style={styles.emptyList}>
                 <Text style={styles.emptyText}>No book recommendation yet. Share your profile with friends!</Text>
