@@ -1,7 +1,7 @@
 import { FontAwesome } from '@expo/vector-icons';
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, TextInput, Button, ScrollView, Platform, TouchableOpacity, KeyboardAvoidingView, Image } from 'react-native';
-import { Comment, toggleLike } from '../utils/bookComments';
+import { StyleSheet, View, Text, TextInput, Button, ScrollView, Platform, TouchableOpacity, KeyboardAvoidingView, Image, Alert } from 'react-native';
+import { Comment, toggleLike, deleteComment  } from '../utils/bookComments';
 import { UserProfile, getUserProfile } from '../utils/userProfile';
 
 interface CommentSectionProps {
@@ -86,6 +86,28 @@ const CommentItem = ({ comment, bookId, currentUserId }: { comment: Comment, boo
   const displayName = userProfile?.displayName || (comment.userId === 'anonymous_user' ? 'Anonymous' : '...');
   // Use user's photoURL OR fallback to UI-AVATARS
   const photoURL =  { uri: `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}` };
+  const isOwner = currentUserId === comment.userId;
+  
+  const handleDelete = () => {
+    Alert.alert(
+      "Delete Comment",
+      "Are you sure you want to permanently delete this comment?",
+      [
+        { text: "Cancel", style: "cancel" },
+        { 
+          text: "Delete", 
+          style: "destructive", 
+          onPress: () => {
+            deleteComment(bookId, comment.id)
+              .catch(err => {
+                console.error("Failed to delete comment:", err);
+                Alert.alert("Error", "Could not delete comment.");
+              });
+          } 
+        }
+      ]
+    );
+  };
 
   return (
     <View style={styles.commentItemContainer}>
@@ -96,7 +118,9 @@ const CommentItem = ({ comment, bookId, currentUserId }: { comment: Comment, boo
         <View style={styles.userLine}>
           {/* --- USE 'displayName' --- */}
           <Text style={styles.commentUser}>{displayName}</Text>
-          <Text style={[styles.sentimentText, { color: color }]}>{emoji}</Text>
+          {(!comment.isSpoiler || showSpoiler) && (
+            <Text style={[styles.sentimentText, { color: color }]}>{emoji}</Text>
+          )}
         </View>
         {comment.isSpoiler && !showSpoiler ? (
           <TouchableOpacity onPress={() => setShowSpoiler(true)} style={styles.spoilerButton}>
@@ -105,6 +129,11 @@ const CommentItem = ({ comment, bookId, currentUserId }: { comment: Comment, boo
           </TouchableOpacity>
         ) : (
           <Text style={styles.commentText}>{comment.text}</Text>
+        )}
+        {isOwner && (
+          <TouchableOpacity onPress={handleDelete} style={styles.deleteButton}>
+            <Text style={styles.deleteButtonText}>Delete</Text>
+          </TouchableOpacity>
         )}
       </View>
       {/* Right side: like button and like count */}
@@ -148,16 +177,15 @@ export default function BookCommentsDisplay({
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       style={styles.modalContainer}
-      keyboardVerticalOffset={10}
     >
       {/* Comment section header */}
       <View style={styles.header}>
         <View style={{width: 24}} /> 
         {/* display the Overall Page Sentiment */}
-            <View style={styles.pageSentimentContainer}>
-                {/* variables (color, emoji, text) correctly defined */}
-                <Text style={[styles.pageSentimentText, {color: color}]}>{emoji} {text}</Text>
-            </View>
+          <View style={styles.pageSentimentContainer}>
+            {/* variables (color, emoji, text) correctly defined */}
+            <Text style={[styles.pageSentimentText, {color: color}]}>{emoji} {text}</Text>
+          </View>
         <Text style={styles.headerTitle}>Comments</Text>
         <TouchableOpacity onPress={onClose} style={styles.closeButton}>
           <DownArrowIcon />
@@ -348,5 +376,14 @@ const styles = StyleSheet.create({
     color: '#8e8e93',
     marginLeft: 10,
     fontSize: 14,
+  },
+  deleteButton: {
+    marginTop: 10,
+    alignSelf: 'flex-start',
+  },
+  deleteButtonText: {
+    color: '#8e8e93',
+    fontSize: 12,
+    fontWeight: '600',
   },
 });

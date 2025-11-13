@@ -1,4 +1,4 @@
-import { collection, query, where, onSnapshot, addDoc, serverTimestamp, Firestore, doc, runTransaction, arrayUnion, arrayRemove, increment } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, addDoc, serverTimestamp, Firestore, doc, runTransaction, arrayUnion, arrayRemove, increment, deleteDoc } from 'firebase/firestore';
 import { db } from '../config/firebase'; 
 import { GoogleGenAI } from '@google/genai';
 import { geminiConfig } from 'config/environment';
@@ -207,5 +207,15 @@ export async function toggleLike(bookId:string, commentId: string, userId: strin
   } catch (e) {
     console.error("Like transaction failed: ", e);
     throw new CommentError("Could not update like status.");
+  }
+}
+
+export async function deleteComment(bookId: string, commentId: string): Promise<void> {
+  const firestore = getFirestoreInstance();
+  const commentRef = doc(firestore, `books/${bookId}/comments`, commentId);
+  try {
+    await deleteDoc(commentRef);
+  } catch (e) {
+    throw new CommentError("Could not delete comment.");
   }
 }
