@@ -130,22 +130,25 @@ const CommentItem = ({ comment, bookId, currentUserId }: { comment: Comment, boo
         ) : (
           <Text style={styles.commentText}>{comment.text}</Text>
         )}
+      </View>
+      
+      {/* Right side: delete + like button and like count */}
+      <View style={styles.rightColumnContainer}>
+        <TouchableOpacity
+          onPress={() => toggleLike(bookId, comment.id, currentUserId)}
+          style={styles.likeButtonContainer}
+        >
+          <HeartIcon liked={isLikedByUser} />
+          {comment.likeCount > 0 && (
+            <Text style={styles.likeCount}>{comment.likeCount}</Text>
+          )}
+        </TouchableOpacity>
         {isOwner && (
           <TouchableOpacity onPress={handleDelete} style={styles.deleteButton}>
-            <Text style={styles.deleteButtonText}>Delete</Text>
+            <FontAwesome name="trash-o" size={15} color="#8e8e93" />
           </TouchableOpacity>
         )}
       </View>
-      {/* Right side: like button and like count */}
-      <TouchableOpacity
-        onPress={() => toggleLike(bookId, comment.id, currentUserId)}
-        style={styles.likeButtonContainer}
-      >
-        <HeartIcon liked={isLikedByUser} />
-        {comment.likeCount > 0 && (
-          <Text style={styles.likeCount}>{comment.likeCount}</Text>
-        )}
-      </TouchableOpacity>
     </View>
   );
 };
@@ -265,7 +268,6 @@ const styles = StyleSheet.create({
     padding: 15,
     borderBottomWidth: 1,
     borderBottomColor: '#3a3a3c',
-    alignItems: 'flex-start',
   },
   pageSentimentContainer: {
     position: 'absolute', // Position this absolutely so it doesn't push the title
@@ -317,8 +319,8 @@ const styles = StyleSheet.create({
   },
   likeCount: { 
     color: '#8e8e93', 
-    fontSize: 12, 
-    marginTop: 4 
+    fontSize: 10, 
+    marginTop: -2 
   },
   commentInputContainer: {
     flexDirection: 'row',
@@ -377,13 +379,12 @@ const styles = StyleSheet.create({
     marginLeft: 10,
     fontSize: 14,
   },
+  rightColumnContainer: {
+    alignItems: 'center',
+    justifyContent: 'space-between', 
+    minHeight: 50, 
+  },
   deleteButton: {
-    marginTop: 10,
-    alignSelf: 'flex-start',
-  },
-  deleteButtonText: {
-    color: '#8e8e93',
-    fontSize: 12,
-    fontWeight: '600',
-  },
+    paddingTop: 4,
+  }
 });
