@@ -11,8 +11,7 @@ export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  // RESET PASS
-  const { signIn, isAuthAvailable, resetPassword } = useAuth();
+  const { signIn, isAuthAvailable } = useAuth();
   const router = useRouter();
 
   // Forgot Password handler
@@ -113,15 +112,6 @@ export default function LoginScreen() {
           </Text>
         </TouchableOpacity>
 
-        {/* Forgot Password button */}
-        <TouchableOpacity 
-          style={styles.forgotPasswordButton}
-          onPress={forgotPasswordHandler}
-          disabled={loading || !isAuthAvailable}
-        >
-          <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
-        </TouchableOpacity>
-
         <TouchableOpacity
           style={styles.linkButton}
           onPress={() => router.push('/signup')}
@@ -210,14 +200,4 @@ const styles = StyleSheet.create({
     marginTop: 8,
     textAlign: 'center',
   },
-  // styles for the Forgot Password button
-  forgotPasswordButton: {
-    alignSelf: 'flex-end',
-    paddingVertical: 8,
-  },
-  forgotPasswordText: {
-    color: '#0a7ea4',
-    fontSize: 14,
-    fontWeight: '600',
-  },
 }); 
