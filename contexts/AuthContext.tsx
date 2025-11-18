@@ -1,4 +1,4 @@
-import { User, createUserWithEmailAndPassword, signOut as firebaseSignOut, signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
+import { User, createUserWithEmailAndPassword, signOut as firebaseSignOut, signInWithEmailAndPassword } from 'firebase/auth';
 import { createContext, useContext, useEffect, useState } from 'react';
 import { auth } from '../config/firebase';
 import { UserProfile, createUserProfile, getUserProfile } from '../utils/userProfile';
@@ -11,7 +11,6 @@ interface AuthContextType {
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
-  resetPassword: (email: string) => Promise<void>; //RESET PASS TYPE DEF HERE
   isAuthAvailable: boolean;
   refreshUserProfile: () => Promise<void>;
 }
@@ -23,7 +22,6 @@ const AuthContext = createContext<AuthContextType>({
   signIn: async () => {},
   signUp: async () => {},
   signOut: async () => {},
-  resetPassword: async () => {}, //RESET PASS DEFAULT VAL
   isAuthAvailable: false,
   refreshUserProfile: async () => {},
 });
@@ -117,15 +115,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // RESET PASS FUNCTION
-  const resetPassword = async (email: string) => {
-    if (!auth) {
-      throw new Error('Firebase Auth is not available. Please check your internet connection and try again.');
-    }
-    // We trim the email here just in case, before sending the reset request
-    await sendPasswordResetEmail(auth, email.trim());
-  };
-
   return (
     <AuthContext.Provider value={{ 
       user, 
@@ -134,7 +123,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signIn, 
       signUp, 
       signOut, 
-      resetPassword, // RESET PASS NEW FUNCTION
       isAuthAvailable,
       refreshUserProfile 
     }}>
