@@ -1,6 +1,6 @@
 import { FontAwesome } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
   FlatList,
   KeyboardAvoidingView,
@@ -12,6 +12,10 @@ import {
   ActivityIndicator,
   Alert,
   Modal,
+  Animated,
+  Easing,
+  Keyboard,
+  Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ChatMessage from '../../components/ChatMessage';
@@ -23,7 +27,7 @@ import {
   collection,
   doc,
   getDoc,
-  getDocs, 
+  getDocs,
   onSnapshot,
   orderBy,
   query,
@@ -32,18 +36,21 @@ import {
   Timestamp,
   where,
   deleteDoc,
+  // --- ADDED/HIGHLIGHTED TYPES FOR FIXING TS(7006) ERRORS ---
+  QuerySnapshot, 
+  DocumentData,
+  QueryDocumentSnapshot,
 } from 'firebase/firestore';
 import { UserProfile } from '../../utils/userProfile';
 
-// --- MODIFICATION: Updated Interface for API response with new fields ---
+// --- UPDATED INTERFACE ---
 interface BookRecommendation {
   title: string;
   author: string;
-  rating: string; // e.g., "4.5/5.0"
-  is_free: boolean; // true/false
-  buy_link: string; // e.g., "Amazon" or "Online Stores"
+  rating: number; // New field for book rating (e.g., 4.5)
+  availability: string; // New field for where to get it (e.g., "Free to read", "Amazon, B&N")
 }
-// -------------------------------------------------------------------
+// --- END UPDATED INTERFACE ---
 
 interface Message {
   id: string;
@@ -52,7 +59,6 @@ interface Message {
   createdAt: Timestamp | null;
 }
 
-// Color Palette (Your existing palette)
 const Colors = {
   background: '#ffffffff',
   primaryBlue: '#0a7ea4',
@@ -63,31 +69,277 @@ const Colors = {
   bubbleLight: '#e4e5f2ff',
 };
 
+const { height } = Dimensions.get('window');
+
 export default function PrivateChatScreen() {
   const router = useRouter();
-  const { id: otherUserId, otherUserName } = useLocalSearchParams<{ id: string, otherUserName?: string }>();
+  const { id: otherUserId, otherUserName } = useLocalSearchParams<{ id: string; otherUserName?: string }>();
   const { user } = useAuth();
   const [otherUser, setOtherUser] = useState<UserProfile | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
-  const firestoreDb = db as Firestore;
-
   const [modalVisible, setModalVisible] = useState(false);
   const [apiLoading, setApiLoading] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
   const [recommendations, setRecommendations] = useState<BookRecommendation[]>([]);
+  const [isInputFocused, setIsInputFocused] = useState(false);
+
+  const flatListRef = useRef<FlatList>(null);
+  const firestoreDb = db as Firestore;
+
+  // Animation refs
+  const aiButtonScale = useRef(new Animated.Value(1)).current;
+  const sendButtonScale = useRef(new Animated.Value(1)).current;
+  const inputBorderAnim = useRef(new Animated.Value(0)).current;
+  const modalAnim = useRef(new Animated.Value(0)).current;
+  const backdropAnim = useRef(new Animated.Value(0)).current;
+  const scrollY = useRef(new Animated.Value(0)).current;
+
+  // Store animation values for each message
+  const messageAnimValues = useRef<Map<string, Animated.Value>>(new Map());
 
   const getConversationId = (uid1: string | undefined, uid2: string | undefined) => {
     if (!uid1 || !uid2) return '';
     return uid1 < uid2 ? `${uid1}_${uid2}` : `${uid2}_${uid1}`;
   };
+
   const conversationId = getConversationId(user?.uid, otherUserId);
 
-  useEffect(() => { /* ... fetchOtherUser ... */ }, [otherUserId, firestoreDb]);
-  useEffect(() => { /* ... onSnapshot messages ... */ }, [conversationId, firestoreDb]);
-  const handleSend = async () => { /* ... */ };
-  const handleUnsend = (messageId: string) => { /* ... */ };
+  // Pulse AI button
+  useEffect(() => {
+    const pulse = Animated.loop(
+      Animated.sequence([
+        Animated.timing(aiButtonScale, {
+          toValue: 1.12,
+          duration: 1000,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(aiButtonScale, {
+          toValue: 1,
+          duration: 1000,
+          easing: Easing.in(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    pulse.start();
+    return () => pulse.stop();
+  }, [aiButtonScale]);
+
+  // Send button pulse
+  useEffect(() => {
+    if (newMessage.trim()) {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(sendButtonScale, {
+            toValue: 1.15,
+            duration: 400,
+            useNativeDriver: true,
+          }),
+          Animated.timing(sendButtonScale, {
+            toValue: 1,
+            duration: 400,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+    } else {
+      sendButtonScale.setValue(1);
+    }
+  }, [newMessage, sendButtonScale]);
+
+  // Input glow
+  useEffect(() => {
+    Animated.timing(inputBorderAnim, {
+      toValue: isInputFocused ? 1 : 0,
+      duration: 300,
+      useNativeDriver: false,
+    }).start();
+  }, [isInputFocused, inputBorderAnim]);
+
+  const inputBorderColor = inputBorderAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [Colors.inputBorder, Colors.primaryBlue],
+  });
+
+  const inputShadowOpacity = inputBorderAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 0.3],
+  });
+
+  // Modal animations
+  const openModal = () => {
+    setModalVisible(true);
+    Animated.parallel([
+      Animated.timing(backdropAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+      Animated.spring(modalAnim, {
+        toValue: 1,
+        friction: 8,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  };
+
+  const closeModal = () => {
+    Animated.parallel([
+      Animated.timing(backdropAnim, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+      Animated.timing(modalAnim, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start(() => setModalVisible(false));
+  };
+
+  // Scroll handler
+  const handleScroll = Animated.event(
+    [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+    { useNativeDriver: false }
+  );
+
+  const fabOpacity = scrollY.interpolate({
+    inputRange: [0, 400],
+    outputRange: [0, 1],
+    extrapolate: 'clamp',
+  });
+
+  const fabTranslateY = scrollY.interpolate({
+    inputRange: [0, 400],
+    outputRange: [100, 0],
+    extrapolate: 'clamp',
+  });
+
+  const scrollToBottom = () => {
+    flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+  };
+
+  // Fetch other user
+  useEffect(() => {
+    const fetchOtherUser = async () => {
+      if (!firestoreDb || !otherUserId) return;
+      try {
+        const userDoc = await getDoc(doc(firestoreDb, 'users', otherUserId));
+        if (userDoc.exists()) {
+          setOtherUser(userDoc.data() as UserProfile);
+        }
+      } catch (error) {
+        console.error('Error fetching other user:', error);
+      }
+    };
+    fetchOtherUser();
+  }, [otherUserId, firestoreDb]);
+
+  // Listen to messages and animate new ones
+  useEffect(() => {
+    if (!firestoreDb || !conversationId) {
+      setMessages([]);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    const messagesCollection = collection(firestoreDb, 'conversations', conversationId, 'messages');
+    const q = query(messagesCollection, orderBy('createdAt', 'desc'));
+
+    const unsubscribe = onSnapshot(
+      q,
+      // --- FIX: Explicitly type snapshot ---
+      (snapshot: QuerySnapshot<DocumentData>) => {
+        const messagesList = snapshot.docs.map(
+          // --- FIX: Explicitly type doc ---
+          (doc: QueryDocumentSnapshot<DocumentData>) => ({
+            id: doc.id,
+            ...doc.data(),
+          })
+        ) as Message[];
+
+        // Animate new messages
+        const newMessages = messagesList.filter(
+          (msg) => !messages.some((m) => m.id === msg.id)
+        );
+
+        newMessages.forEach((msg, idx) => {
+          const anim = new Animated.Value(0);
+          messageAnimValues.current.set(msg.id, anim);
+
+          Animated.sequence([
+            Animated.delay(idx * 60),
+            Animated.timing(anim, {
+              toValue: 1,
+              duration: 400,
+              easing: Easing.out(Easing.quad),
+              useNativeDriver: true,
+            }),
+          ]).start();
+        });
+
+        setMessages(messagesList);
+        setLoading(false);
+        setTimeout(scrollToBottom, 100);
+      },
+      // --- FIX: Explicitly type error ---
+      (error: Error) => {
+        console.error('Error fetching messages:', error);
+        setLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [conversationId, firestoreDb]);
+
+  const handleSend = async () => {
+    if (newMessage.trim() === '' || !user || !firestoreDb || !conversationId) return;
+
+    const textToSend = newMessage.trim();
+    setNewMessage('');
+    Keyboard.dismiss();
+
+    const messagesCollection = collection(firestoreDb, 'conversations', conversationId, 'messages');
+    try {
+      await addDoc(messagesCollection, {
+        text: textToSend,
+        senderId: user.uid,
+        createdAt: serverTimestamp(),
+      });
+    } catch (error) {
+      console.error('Error sending message:', error);
+    }
+  };
+
+  const handleUnsend = (messageId: string) => {
+    if (!firestoreDb || !conversationId || !messageId) return;
+
+    Alert.alert(
+      'Unsend Message?',
+      'This will permanently delete this message for everyone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Unsend',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const messageRef = doc(firestoreDb, 'conversations', conversationId, 'messages', messageId);
+              await deleteDoc(messageRef);
+            } catch (error) {
+              console.error('Error unsending message:', error);
+              Alert.alert('Error', 'Could not unsend message.');
+            }
+          },
+        },
+      ]
+    );
+  };
 
   const formatConversationHistory = (
     chatMessages: Message[],
@@ -96,7 +348,7 @@ export default function PrivateChatScreen() {
   ): string => {
     return chatMessages
       .map((msg) => {
-        const speaker = msg.senderId === currentUserId ? "Me" : otherUserName;
+        const speaker = msg.senderId === currentUserId ? 'Me' : otherUserName;
         return `${speaker}: ${msg.text}`;
       })
       .join('\n');
@@ -104,11 +356,11 @@ export default function PrivateChatScreen() {
 
   const getAiRecommendations = async () => {
     if (!user || !firestoreDb || !conversationId) {
-      Alert.alert("Error", "Cannot get recommendations at this time.");
+      Alert.alert('Error', 'Cannot get recommendations at this time.');
       return;
     }
 
-    setModalVisible(true);
+    openModal();
     setApiLoading(true);
     setApiError(null);
     setRecommendations([]);
@@ -124,7 +376,7 @@ export default function PrivateChatScreen() {
 
       const snapshot = await getDocs(recentMessagesQuery);
       if (snapshot.empty) {
-        setApiError("No recent messages found. Chat a bit more!");
+        setApiError('No recent messages found. Chat a bit more!');
         setApiLoading(false);
         return;
       }
@@ -134,20 +386,19 @@ export default function PrivateChatScreen() {
       const conversationHistory = formatConversationHistory(
         recentMessages,
         user.uid,
-        otherUser?.displayName || "Friend"
+        otherUser?.displayName || 'Friend'
       );
 
       const apiKey = process.env.EXPO_PUBLIC_GEMINI_API_KEY;
       if (!apiKey) {
-        console.error("Gemini API Key is missing. Please update your .env file.");
-        setApiError("AI feature is not configured. Please add a valid Gemini API key.");
+        setApiError('Gemini API Key missing. Add it to your .env file.');
         setApiLoading(false);
         return;
       }
 
       const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
       
-      // --- MODIFICATION: Updated System Prompt ---
+      // --- UPDATED SYSTEM PROMPT ---
       const systemPrompt = `
   You are a highly specialized AI Book Recommender for a social media app.
   Your task:
@@ -160,29 +411,28 @@ export default function PrivateChatScreen() {
       
       const userPrompt = `Analyze the following private chat conversation from the last hour and recommend exactly 5 book titles. CONVERSATION:\n${conversationHistory}`;
 
-      // --- MODIFICATION: Updated Schema with new properties ---
+
+      // --- UPDATED RESPONSE SCHEMA ---
       const schema = {
-        type: "ARRAY",
+        type: 'ARRAY',
         items: {
-          type: "OBJECT",
+          type: 'OBJECT',
           properties: {
-            title: { type: "STRING", description: "The full title of the recommended book." },
-            author: { type: "STRING", description: "The author's full name." },
-            rating: { type: "STRING", description: "The book's average rating (e.g., 4.3/5.0)." },
-            is_free: { type: "BOOLEAN", description: "True if a free, legal version (e.g., public domain e-book) is easily accessible." },
-            buy_link: { type: "STRING", description: "A generalized link or place where the book can be purchased (e.g., Amazon, local bookstore)." },
-          }
-        }
+            title: { type: 'STRING' },
+            author: { type: 'STRING' },
+            rating: { type: 'NUMBER' }, // Updated to NUMBER for rating
+            availability: { type: 'STRING' }, // New property
+          },
+          required: ['title', 'author', 'rating', 'availability'], // Added required fields
+        },
       };
-      // --------------------------------------------------------
+      // --- END UPDATED RESPONSE SCHEMA ---
 
       const payload = {
         contents: [{ parts: [{ text: userPrompt }] }],
-        systemInstruction: {
-          parts: [{ text: systemPrompt }],
-        },
+        systemInstruction: { parts: [{ text: systemPrompt }] },
         generationConfig: {
-          responseMimeType: "application/json",
+          responseMimeType: 'application/json',
           responseSchema: schema,
         },
       };
@@ -190,36 +440,70 @@ export default function PrivateChatScreen() {
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
       });
 
-      if (!response.ok) {
-        const errorBody = await response.json();
-        console.error("API Error Response:", JSON.stringify(errorBody, null, 2));
-        throw new Error(`API request failed: ${errorBody?.error?.message || response.statusText}`);
-      }
-
       const result = await response.json();
-      
       const jsonText = result.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (!jsonText) {
-        throw new Error("Invalid response structure from API.");
-      }
-
+      if (!jsonText) throw new Error('Invalid response');
       const parsedJson = JSON.parse(jsonText);
-      // Basic check to ensure the data is iterable
-      if (!Array.isArray(parsedJson)) {
-         throw new Error("API provided malformed data structure (expected an array).");
-      }
-      setRecommendations(parsedJson as BookRecommendation[]); // Cast to the correct interface
-      
+      setRecommendations(parsedJson);
     } catch (error: any) {
-      console.error("Error in getAiRecommendations:", error);
-      setApiError(`Failed to get recommendations: ${error.message}`);
+      console.error(error);
+      setApiError(error.message || 'Failed to get recommendations');
     } finally {
       setApiLoading(false);
     }
   };
+
+  // SAFE renderMessage — NO useEffect inside
+  const renderMessage = useCallback(({ item }: { item: Message }) => {
+    const isCurrentUser = item.senderId === user?.uid;
+    const anim = messageAnimValues.current.get(item.id) || new Animated.Value(1);
+
+    const animatedStyle = {
+      opacity: anim,
+      transform: [
+        {
+          translateY: anim.interpolate({
+            inputRange: [0, 1],
+            outputRange: [30, 0],
+          }),
+        },
+      ],
+    };
+
+    return (
+      <Animated.View style={animatedStyle}>
+        <ChatMessage
+          message={item}
+          isCurrentUser={isCurrentUser}
+          currentUserBubbleColor={Colors.primaryBlue}
+          currentUserTextColor={Colors.textLight}
+          otherUserBubbleColor={Colors.bubbleLight}
+          otherUserTextColor={Colors.textDark}
+          onUnsend={handleUnsend}
+        />
+      </Animated.View>
+    );
+  }, [user?.uid]);
+
+  // --- UPDATED COMPONENT RENDER (within the Modal FlatList) ---
+  const renderRecommendationItem = ({ item }: { item: BookRecommendation }) => (
+    <View style={styles.recItem}>
+      <FontAwesome name="book" size={20} color={Colors.primaryBlue} style={{ alignSelf: 'flex-start' }} />
+      <View style={styles.recTextContainer}>
+        <Text style={styles.recTitle}>{item.title}</Text>
+        <Text style={styles.recAuthor}>by {item.author}</Text>
+        <View style={styles.recRatingContainer}>
+          <FontAwesome name="star" size={14} color="#FFD700" />
+          <Text style={styles.recRatingText}>{item.rating.toFixed(1)} / 5.0</Text>
+        </View>
+        <Text style={styles.recAvailabilityText}>{item.availability}</Text>
+      </View>
+    </View>
+  );
+  // --- END UPDATED COMPONENT RENDER ---
 
   return (
     <SafeAreaView style={styles.container}>
@@ -230,122 +514,136 @@ export default function PrivateChatScreen() {
         <Text style={styles.headerTitle} numberOfLines={1}>
           {otherUser?.displayName || otherUserName || 'Chat'}
         </Text>
-        <TouchableOpacity
-          onPress={getAiRecommendations}
-          style={styles.aiButton}
-          testID="recommendation-btn"
-        >
-          <FontAwesome name="magic" size={22} color={Colors.accentGold} />
-          <Text style={styles.aiButtonText}>AI Book Recs</Text>
-        </TouchableOpacity>
+        <Animated.View style={{ transform: [{ scale: aiButtonScale }] }}>
+          <TouchableOpacity onPress={getAiRecommendations} style={styles.aiButton}>
+            <FontAwesome name="magic" size={22} color={Colors.accentGold} />
+            <Text style={styles.aiButtonText}>AI Book Recs</Text>
+          </TouchableOpacity>
+        </Animated.View>
       </View>
 
-      {/* --- MODIFICATION: KeyboardAvoidingView wraps BOTH the list AND the input --- */}
       <KeyboardAvoidingView
+        style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.keyboardAvoidingView} // Added a style with flex: 1
-        // Removed fixed offset, relying on 'padding' behavior and list structure
       >
         {loading ? (
-          <ActivityIndicator style={styles.loader} size="large" color={Colors.primaryBlue} />
+          <View style={styles.loader}>
+            <ActivityIndicator size="small" color={Colors.primaryBlue} />
+            <Text style={styles.loadingText}>Loading messages...</Text>
+          </View>
         ) : (
           <FlatList
+            ref={flatListRef}
             data={messages}
-            renderItem={({ item }) => (
-              <ChatMessage 
-                message={item} 
-                isCurrentUser={item.senderId === user?.uid}
-                currentUserBubbleColor={Colors.primaryBlue}
-                currentUserTextColor={Colors.textLight}
-                otherUserBubbleColor={Colors.bubbleLight}
-                otherUserTextColor={Colors.textDark}
-                onUnsend={handleUnsend}
-              />
-            )}
+            renderItem={renderMessage}
             keyExtractor={(item) => item.id}
             contentContainerStyle={styles.messagesContainer}
             inverted
+            onScroll={handleScroll}
+            scrollEventThrottle={16}
             ListEmptyComponent={
               <Text style={styles.emptyText}>Be the first to send a message!</Text>
             }
           />
         )}
 
-        {/* Input container must be INSIDE the KeyboardAvoidingView */}
-        <View style={styles.inputContainer}>
-          <TextInput
-            style={styles.input}
-            value={newMessage}
-            onChangeText={setNewMessage}
-            placeholder="Type a message..."
-            placeholderTextColor={Colors.inputBorder}
-            onSubmitEditing={handleSend}
-          />
-          <TouchableOpacity style={styles.sendButton} onPress={handleSend}>
-            <FontAwesome name="send" size={20} color={Colors.textLight} />
+        {/* Scroll to Bottom FAB */}
+        <Animated.View
+          style={[
+            styles.scrollToBottomButton,
+            {
+              opacity: fabOpacity,
+              transform: [{ translateY: fabTranslateY }],
+            },
+          ]}
+          pointerEvents="box-none"
+        >
+          <TouchableOpacity onPress={scrollToBottom} style={styles.fabInner}>
+            <FontAwesome name="arrow-down" size={20} color={Colors.textLight} />
           </TouchableOpacity>
+        </Animated.View>
+
+        <View style={styles.inputContainer}>
+          <Animated.View
+            style={[
+              styles.inputWrapper,
+              {
+                borderColor: inputBorderColor,
+                shadowOpacity: inputShadowOpacity,
+              },
+            ]}
+          >
+            <TextInput
+              style={styles.input}
+              value={newMessage}
+              onChangeText={setNewMessage}
+              placeholder="Type a message..."
+              placeholderTextColor={Colors.inputBorder}
+              onSubmitEditing={handleSend}
+              onFocus={() => setIsInputFocused(true)}
+              onBlur={() => setIsInputFocused(false)}
+            />
+          </Animated.View>
+          <Animated.View style={{ transform: [{ scale: sendButtonScale }] }}>
+            <TouchableOpacity style={styles.sendButton} onPress={handleSend}>
+              <FontAwesome name="send" size={20} color={Colors.textLight} />
+            </TouchableOpacity>
+          </Animated.View>
         </View>
       </KeyboardAvoidingView>
-      {/* --- END KEYBOARD AVOIDING VIEW --- */}
 
-
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={modalVisible}
-        onRequestClose={() => setModalVisible(false)}
-      >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalContainer}>
+      <Modal visible={modalVisible} transparent animationType="none">
+        <Animated.View style={[styles.modalBackdrop, { opacity: backdropAnim }]}>
+          <Animated.View
+            style={[
+              styles.modalContainer,
+              {
+                transform: [
+                  {
+                    translateY: modalAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [height, 0],
+                    }),
+                  },
+                ],
+              },
+            ]}
+          >
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>AI Book Recommendations</Text>
-              <TouchableOpacity onPress={() => setModalVisible(false)}>
+              <TouchableOpacity onPress={closeModal}>
                 <FontAwesome name="close" size={24} color="#666" />
               </TouchableOpacity>
             </View>
 
             <View style={styles.modalBody}>
               {apiLoading ? (
-                 <View style={styles.centerContent}>
-                   <ActivityIndicator size="large" color={Colors.primaryBlue} />
-                   <Text style={styles.modalStatusText}>Analyzing your recent mood...</Text>
-                 </View>
+                <View style={styles.centerContent}>
+                  <ActivityIndicator size="large" color={Colors.primaryBlue} />
+                  <Text style={styles.modalStatusText}>Analyzing your recent mood...</Text>
+                </View>
               ) : apiError ? (
-                 <View style={styles.centerContent}>
-                   <FontAwesome name="exclamation-triangle" size={30} color="#D9534F" />
-                   <Text style={styles.modalErrorText}>{apiError}</Text>
-                 </View>
+                <View style={styles.centerContent}>
+                  <FontAwesome name="exclamation-triangle" size={30} color="#D9534F" />
+                  <Text style={styles.modalErrorText}>{apiError}</Text>
+                </View>
               ) : (
                 <FlatList
                   data={recommendations}
                   keyExtractor={(item, index) => `${item.title}-${index}`}
-                  renderItem={({ item }) => (
-                    <View style={styles.recItem}>
-                      <FontAwesome name="book" size={20} color={Colors.primaryBlue} />
-                      <View style={styles.recTextContainer}>
-                        <Text style={styles.recTitle}>{item.title}</Text>
-                        <Text style={styles.recAuthor}>by {item.author}</Text>
-                        {/* --- MODIFICATION: Display Rating, Buy, and Free Info --- */}
-                        <Text style={styles.recDetail}>⭐ Rating: {item.rating || 'N/A'}</Text>
-                        <Text style={styles.recDetail}>💰 Free: {item.is_free ? 'Yes (Public Domain/Trial)' : 'No'}</Text>
-                        <Text style={styles.recDetail}>🛒 Buy: {item.buy_link || 'Online Stores'}</Text>
-                        {/* ---------------------------------------------------------- */}
-                      </View>
-                    </View>
-                  )}
+                  // --- UPDATED RENDER ITEM CALL ---
+                  renderItem={renderRecommendationItem}
+                  // --- END UPDATED RENDER ITEM CALL ---
                   ItemSeparatorComponent={() => <View style={styles.recSeparator} />}
                 />
               )}
             </View>
 
-            <TouchableOpacity
-              style={styles.modalCloseButton}
-              onPress={() => setModalVisible(false)}
-            >
+            <TouchableOpacity style={styles.modalCloseButton} onPress={closeModal}>
               <Text style={styles.modalCloseButtonText}>Close</Text>
             </TouchableOpacity>
-          </View>
-        </View>
+          </Animated.View>
+        </Animated.View>
       </Modal>
     </SafeAreaView>
   );
@@ -353,11 +651,8 @@ export default function PrivateChatScreen() {
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1, 
+    flex: 1,
     backgroundColor: Colors.background,
-  },
-  keyboardAvoidingView: {
-    flex: 1, // CRUCIAL: Allows KAV to calculate space correctly
   },
   header: {
     flexDirection: 'row',
@@ -366,12 +661,11 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: Colors.inputBorder,
     backgroundColor: Colors.primaryBlue,
+    elevation: 4,
   },
-  backButton: {
-    paddingRight: 10,
-  },
+  backButton: { padding: 4 },
   headerTitle: {
-    flex: 1, 
+    flex: 1,
     fontSize: 20,
     fontWeight: 'bold',
     color: Colors.textLight,
@@ -380,69 +674,86 @@ const styles = StyleSheet.create({
   aiButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-    borderRadius: 15,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    marginLeft: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    shadowColor: Colors.accentGold,
+    shadowOpacity: 0.6,
+    shadowRadius: 8,
+    elevation: 6,
   },
   aiButtonText: {
     color: Colors.accentGold,
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
     marginLeft: 6,
   },
-  loader: {
-    flex: 1, 
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  messagesContainer: {
-    padding: 16,
-    flexGrow: 1, 
-  },
-  emptyText: {
-    textAlign: 'center',
-    marginTop: 50,
-    fontSize: 16,
-    color: '#868484ff',
-  },
+  loader: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  loadingText: { marginTop: 12, color: Colors.primaryBlue, fontSize: 16 },
+  messagesContainer: { padding: 16, paddingBottom: 24, flexGrow: 1 },
+  emptyText: { textAlign: 'center', marginTop: 20, fontSize: 16, color: '#868484ff' },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
+    padding: 12,
     borderTopWidth: 1,
     borderTopColor: Colors.inputBorder,
     backgroundColor: Colors.background,
   },
-  input: {
+  inputWrapper: {
     flex: 1,
-    borderWidth: 1,
-    borderColor: Colors.inputBorder,
-    borderRadius: 25,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    borderWidth: 3,
+    borderRadius: 28,
+    backgroundColor: '#fff',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 4,
+  },
+  input: {
+    paddingHorizontal: 18,
+    paddingVertical: 14,
     fontSize: 16,
     color: Colors.textDark,
-    backgroundColor: Colors.background,
   },
   sendButton: {
     backgroundColor: Colors.primaryBlue,
-    borderRadius: 25,
-    width: 50,
-    height: 50,
+    borderRadius: 28,
+    width: 56,
+    height: 56,
     marginLeft: 12,
     justifyContent: 'center',
     alignItems: 'center',
+    elevation: 8,
     shadowColor: Colors.primaryBlue,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 3,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+  },
+  scrollToBottomButton: {
+    position: 'absolute',
+    right: 20,
+    bottom: 90,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    elevation: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+  },
+  fabInner: {
+    flex: 1,
+    backgroundColor: Colors.primaryBlue,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   modalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
@@ -451,13 +762,13 @@ const styles = StyleSheet.create({
     width: '100%',
     maxHeight: '80%',
     backgroundColor: 'white',
-    borderRadius: 15,
+    borderRadius: 20,
     padding: 20,
+    elevation: 20,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
+    shadowRadius: 20,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -465,73 +776,45 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderBottomWidth: 1,
     borderBottomColor: '#eee',
-    paddingBottom: 10,
+    paddingBottom: 12,
+    marginBottom: 8,
   },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: Colors.primaryBlue,
-  },
-  modalBody: {
-    paddingVertical: 20,
-    minHeight: 150,
-    justifyContent: 'center',
-  },
-  centerContent: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalStatusText: {
-    textAlign: 'center',
-    fontSize: 16,
-    color: '#555',
-    marginTop: 15,
-  },
-  modalErrorText: {
-    textAlign: 'center',
-    fontSize: 16,
-    color: '#D9534F',
-    marginTop: 15,
-  },
-  recItem: {
-    flexDirection: 'row',
+  modalTitle: { fontSize: 19, fontWeight: '700', color: Colors.primaryBlue },
+  modalBody: { paddingVertical: 10, maxHeight: 400 },
+  centerContent: { justifyContent: 'center', alignItems: 'center', minHeight: 120 },
+  modalStatusText: { textAlign: 'center', fontSize: 16, color: '#555', marginTop: 15 },
+  modalErrorText: { textAlign: 'center', fontSize: 16, color: '#D9534F', marginTop: 15 },
+  recItem: { 
+    flexDirection: 'row', 
     alignItems: 'flex-start',
-    paddingVertical: 10,
+    paddingVertical: 12, 
   },
-  recTextContainer: {
-    flex: 1,
-    marginLeft: 15,
-  },
-  recTitle: {
-    fontSize: 16,
+  recTextContainer: { flex: 1, marginLeft: 15 },
+  recTitle: { fontSize: 16, fontWeight: '600', color: Colors.textDark },
+  recAuthor: { fontSize: 14, color: '#666', marginBottom: 5 },
+  recRatingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 3,
+  }, 
+  recRatingText: { 
+    fontSize: 14, 
+    color: Colors.textDark, 
+    marginLeft: 5, 
     fontWeight: '600',
-    color: Colors.textDark,
-  },
-  recAuthor: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 5,
-  },
-  recDetail: { // Style for the new detail lines
-    fontSize: 12,
-    color: '#333',
-    lineHeight: 18,
-  },
-  recSeparator: {
-    height: 1,
-    backgroundColor: '#eee',
-    marginLeft: 35,
-  },
+  }, 
+  recAvailabilityText: {
+    fontSize: 13,
+    color: Colors.primaryBlue,
+    fontStyle: 'italic',
+  }, 
+  recSeparator: { height: 1, backgroundColor: '#eee', marginLeft: 35 },
   modalCloseButton: {
     backgroundColor: Colors.primaryBlue,
-    borderRadius: 10,
-    padding: 12,
+    borderRadius: 12,
+    padding: 14,
     marginTop: 10,
+    elevation: 4,
   },
-  modalCloseButtonText: {
-    color: 'white',
-    textAlign: 'center',
-    fontSize: 16,
-    fontWeight: '600',
-  },
+  modalCloseButtonText: { color: 'white', textAlign: 'center', fontSize: 16, fontWeight: '600' },
 });
