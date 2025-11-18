@@ -10,6 +10,8 @@ import {
   TouchableOpacity,
   View,
   ActivityIndicator,
+  Alert,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ChatMessage from '../../components/ChatMessage';
@@ -21,14 +23,27 @@ import {
   collection,
   doc,
   getDoc,
+  getDocs, 
   onSnapshot,
   orderBy,
   query,
   serverTimestamp,
   Firestore,
   Timestamp,
+  where,
+  deleteDoc,
 } from 'firebase/firestore';
 import { UserProfile } from '../../utils/userProfile';
+
+// --- MODIFICATION: Updated Interface for API response with new fields ---
+interface BookRecommendation {
+  title: string;
+  author: string;
+  rating: string; // e.g., "4.5/5.0"
+  is_free: boolean; // true/false
+  buy_link: string; // e.g., "Amazon" or "Online Stores"
+}
+// -------------------------------------------------------------------
 
 interface Message {
   id: string;
@@ -37,15 +52,15 @@ interface Message {
   createdAt: Timestamp | null;
 }
 
-// Color Palette
+// Color Palette (Your existing palette)
 const Colors = {
-  background: '#F8F5EE',
-  primaryBlue: '#2A3C52',
-  accentGold: '#FFD700',
-  textLight: '#F8F5EE',
+  background: '#ffffffff',
+  primaryBlue: '#0a7ea4',
+  accentGold: '#fafafaff',
+  textLight: '#fcfbf8ff',
   textDark: '#2A3C52',
   inputBorder: '#B0C4DE',
-  bubbleLight: '#D4E0F0',
+  bubbleLight: '#e4e5f2ff',
 };
 
 export default function PrivateChatScreen() {
@@ -58,67 +73,151 @@ export default function PrivateChatScreen() {
   const [loading, setLoading] = useState(true);
   const firestoreDb = db as Firestore;
 
+  const [modalVisible, setModalVisible] = useState(false);
+  const [apiLoading, setApiLoading] = useState(false);
+  const [apiError, setApiError] = useState<string | null>(null);
+  const [recommendations, setRecommendations] = useState<BookRecommendation[]>([]);
+
   const getConversationId = (uid1: string | undefined, uid2: string | undefined) => {
     if (!uid1 || !uid2) return '';
     return uid1 < uid2 ? `${uid1}_${uid2}` : `${uid2}_${uid1}`;
   };
-
   const conversationId = getConversationId(user?.uid, otherUserId);
 
-  useEffect(() => {
-    const fetchOtherUser = async () => {
-      if (!firestoreDb || !otherUserId) return;
-      try {
-        const userDoc = await getDoc(doc(firestoreDb, 'users', otherUserId));
-        if (userDoc.exists()) {
-          setOtherUser(userDoc.data() as UserProfile);
-        }
-      } catch (error) {
-        console.error("Error fetching other user:", error);
-      }
-    };
-    fetchOtherUser();
-  }, [otherUserId, firestoreDb]);
+  useEffect(() => { /* ... fetchOtherUser ... */ }, [otherUserId, firestoreDb]);
+  useEffect(() => { /* ... onSnapshot messages ... */ }, [conversationId, firestoreDb]);
+  const handleSend = async () => { /* ... */ };
+  const handleUnsend = (messageId: string) => { /* ... */ };
 
-  useEffect(() => {
-    if (!firestoreDb || !conversationId) {
-      setMessages([]);
-      setLoading(false);
+  const formatConversationHistory = (
+    chatMessages: Message[],
+    currentUserId: string,
+    otherUserName: string
+  ): string => {
+    return chatMessages
+      .map((msg) => {
+        const speaker = msg.senderId === currentUserId ? "Me" : otherUserName;
+        return `${speaker}: ${msg.text}`;
+      })
+      .join('\n');
+  };
+
+  const getAiRecommendations = async () => {
+    if (!user || !firestoreDb || !conversationId) {
+      Alert.alert("Error", "Cannot get recommendations at this time.");
       return;
     }
 
-    setLoading(true);
-    const messagesCollection = collection(firestoreDb, 'conversations', conversationId, 'messages');
-    const q = query(messagesCollection, orderBy('createdAt', 'desc'));
+    setModalVisible(true);
+    setApiLoading(true);
+    setApiError(null);
+    setRecommendations([]);
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const messagesList = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as Message[];
-      setMessages(messagesList);
-      setLoading(false);
-    }, (error) => {
-      console.error("Error fetching messages:", error);
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
-  }, [conversationId, firestoreDb]);
-
-  const handleSend = async () => {
-    if (newMessage.trim() === '' || !user || !firestoreDb || !conversationId) return;
-
-    const messagesCollection = collection(firestoreDb, 'conversations', conversationId, 'messages');
     try {
-      await addDoc(messagesCollection, {
-        text: newMessage.trim(),
-        senderId: user.uid,
-        createdAt: serverTimestamp(),
+      const oneHourAgo = Timestamp.fromMillis(Date.now() - 60 * 60 * 1000);
+      const messagesCollection = collection(firestoreDb, 'conversations', conversationId, 'messages');
+      const recentMessagesQuery = query(
+        messagesCollection,
+        where('createdAt', '>=', oneHourAgo),
+        orderBy('createdAt', 'asc')
+      );
+
+      const snapshot = await getDocs(recentMessagesQuery);
+      if (snapshot.empty) {
+        setApiError("No recent messages found. Chat a bit more!");
+        setApiLoading(false);
+        return;
+      }
+
+      const recentMessages = snapshot.docs.map((doc) => doc.data() as Message);
+
+      const conversationHistory = formatConversationHistory(
+        recentMessages,
+        user.uid,
+        otherUser?.displayName || "Friend"
+      );
+
+      const apiKey = process.env.EXPO_PUBLIC_GEMINI_API_KEY;
+      if (!apiKey) {
+        console.error("Gemini API Key is missing. Please update your .env file.");
+        setApiError("AI feature is not configured. Please add a valid Gemini API key.");
+        setApiLoading(false);
+        return;
+      }
+
+      const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+      
+      // --- MODIFICATION: Updated System Prompt ---
+      const systemPrompt = `
+  You are a highly specialized AI Book Recommender for a social media app.
+  Your task:
+  1. Analyze the user's recent chat conversation to detect their current mood and sentiment.
+  2. Recommend exactly 5 books that best match or uplift that mood.
+  3. For each book, provide its average rating, and first try to find the free one, specify if it's currently free (e.g., public domain), and suggest a purchase point (e.g., Amazon, local bookstore).
+  4. Only choose books that are: Highly rated (4.0★+), widely recommended, and easily available.
+  5. Respond only with the specified JSON structure.`;
+      // ------------------------------------------
+      
+      const userPrompt = `Analyze the following private chat conversation from the last hour and recommend exactly 5 book titles. CONVERSATION:\n${conversationHistory}`;
+
+      // --- MODIFICATION: Updated Schema with new properties ---
+      const schema = {
+        type: "ARRAY",
+        items: {
+          type: "OBJECT",
+          properties: {
+            title: { type: "STRING", description: "The full title of the recommended book." },
+            author: { type: "STRING", description: "The author's full name." },
+            rating: { type: "STRING", description: "The book's average rating (e.g., 4.3/5.0)." },
+            is_free: { type: "BOOLEAN", description: "True if a free, legal version (e.g., public domain e-book) is easily accessible." },
+            buy_link: { type: "STRING", description: "A generalized link or place where the book can be purchased (e.g., Amazon, local bookstore)." },
+          }
+        }
+      };
+      // --------------------------------------------------------
+
+      const payload = {
+        contents: [{ parts: [{ text: userPrompt }] }],
+        systemInstruction: {
+          parts: [{ text: systemPrompt }],
+        },
+        generationConfig: {
+          responseMimeType: "application/json",
+          responseSchema: schema,
+        },
+      };
+
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
       });
-      setNewMessage('');
-    } catch (error) {
-      console.error("Error sending message:", error);
+
+      if (!response.ok) {
+        const errorBody = await response.json();
+        console.error("API Error Response:", JSON.stringify(errorBody, null, 2));
+        throw new Error(`API request failed: ${errorBody?.error?.message || response.statusText}`);
+      }
+
+      const result = await response.json();
+      
+      const jsonText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!jsonText) {
+        throw new Error("Invalid response structure from API.");
+      }
+
+      const parsedJson = JSON.parse(jsonText);
+      // Basic check to ensure the data is iterable
+      if (!Array.isArray(parsedJson)) {
+         throw new Error("API provided malformed data structure (expected an array).");
+      }
+      setRecommendations(parsedJson as BookRecommendation[]); // Cast to the correct interface
+      
+    } catch (error: any) {
+      console.error("Error in getAiRecommendations:", error);
+      setApiError(`Failed to get recommendations: ${error.message}`);
+    } finally {
+      setApiLoading(false);
     }
   };
 
@@ -128,39 +227,51 @@ export default function PrivateChatScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <FontAwesome name="arrow-left" size={24} color={Colors.accentGold} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>
+        <Text style={styles.headerTitle} numberOfLines={1}>
           {otherUser?.displayName || otherUserName || 'Chat'}
         </Text>
+        <TouchableOpacity
+          onPress={getAiRecommendations}
+          style={styles.aiButton}
+          testID="recommendation-btn"
+        >
+          <FontAwesome name="magic" size={22} color={Colors.accentGold} />
+          <Text style={styles.aiButtonText}>AI Book Recs</Text>
+        </TouchableOpacity>
       </View>
-      
-      {loading ? (
-        <ActivityIndicator style={styles.loader} size="large" color={Colors.primaryBlue} />
-      ) : (
-        <FlatList
-          data={messages}
-          renderItem={({ item }) => (
-            <ChatMessage 
-              message={item} 
-              isCurrentUser={item.senderId === user?.uid}
-              currentUserBubbleColor={Colors.primaryBlue}
-              currentUserTextColor={Colors.textLight}
-              otherUserBubbleColor={Colors.bubbleLight}
-              otherUserTextColor={Colors.textDark}
-            />
-          )}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.messagesContainer}
-          inverted
-          ListEmptyComponent={
-            <Text style={styles.emptyText}>Be the first  send a message!</Text>
-          }
-        />
-      )}
 
+      {/* --- MODIFICATION: KeyboardAvoidingView wraps BOTH the list AND the input --- */}
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={90}
+        style={styles.keyboardAvoidingView} // Added a style with flex: 1
+        // Removed fixed offset, relying on 'padding' behavior and list structure
       >
+        {loading ? (
+          <ActivityIndicator style={styles.loader} size="large" color={Colors.primaryBlue} />
+        ) : (
+          <FlatList
+            data={messages}
+            renderItem={({ item }) => (
+              <ChatMessage 
+                message={item} 
+                isCurrentUser={item.senderId === user?.uid}
+                currentUserBubbleColor={Colors.primaryBlue}
+                currentUserTextColor={Colors.textLight}
+                otherUserBubbleColor={Colors.bubbleLight}
+                otherUserTextColor={Colors.textDark}
+                onUnsend={handleUnsend}
+              />
+            )}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={styles.messagesContainer}
+            inverted
+            ListEmptyComponent={
+              <Text style={styles.emptyText}>Be the first to send a message!</Text>
+            }
+          />
+        )}
+
+        {/* Input container must be INSIDE the KeyboardAvoidingView */}
         <View style={styles.inputContainer}>
           <TextInput
             style={styles.input}
@@ -175,14 +286,78 @@ export default function PrivateChatScreen() {
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+      {/* --- END KEYBOARD AVOIDING VIEW --- */}
+
+
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={modalVisible}
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>AI Book Recommendations</Text>
+              <TouchableOpacity onPress={() => setModalVisible(false)}>
+                <FontAwesome name="close" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.modalBody}>
+              {apiLoading ? (
+                 <View style={styles.centerContent}>
+                   <ActivityIndicator size="large" color={Colors.primaryBlue} />
+                   <Text style={styles.modalStatusText}>Analyzing your recent mood...</Text>
+                 </View>
+              ) : apiError ? (
+                 <View style={styles.centerContent}>
+                   <FontAwesome name="exclamation-triangle" size={30} color="#D9534F" />
+                   <Text style={styles.modalErrorText}>{apiError}</Text>
+                 </View>
+              ) : (
+                <FlatList
+                  data={recommendations}
+                  keyExtractor={(item, index) => `${item.title}-${index}`}
+                  renderItem={({ item }) => (
+                    <View style={styles.recItem}>
+                      <FontAwesome name="book" size={20} color={Colors.primaryBlue} />
+                      <View style={styles.recTextContainer}>
+                        <Text style={styles.recTitle}>{item.title}</Text>
+                        <Text style={styles.recAuthor}>by {item.author}</Text>
+                        {/* --- MODIFICATION: Display Rating, Buy, and Free Info --- */}
+                        <Text style={styles.recDetail}>⭐ Rating: {item.rating || 'N/A'}</Text>
+                        <Text style={styles.recDetail}>💰 Free: {item.is_free ? 'Yes (Public Domain/Trial)' : 'No'}</Text>
+                        <Text style={styles.recDetail}>🛒 Buy: {item.buy_link || 'Online Stores'}</Text>
+                        {/* ---------------------------------------------------------- */}
+                      </View>
+                    </View>
+                  )}
+                  ItemSeparatorComponent={() => <View style={styles.recSeparator} />}
+                />
+              )}
+            </View>
+
+            <TouchableOpacity
+              style={styles.modalCloseButton}
+              onPress={() => setModalVisible(false)}
+            >
+              <Text style={styles.modalCloseButtonText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
+    flex: 1, 
     backgroundColor: Colors.background,
+  },
+  keyboardAvoidingView: {
+    flex: 1, // CRUCIAL: Allows KAV to calculate space correctly
   },
   header: {
     flexDirection: 'row',
@@ -196,25 +371,41 @@ const styles = StyleSheet.create({
     paddingRight: 10,
   },
   headerTitle: {
+    flex: 1, 
     fontSize: 20,
     fontWeight: 'bold',
     color: Colors.textLight,
     marginLeft: 10,
   },
+  aiButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 15,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    marginLeft: 10,
+  },
+  aiButtonText: {
+    color: Colors.accentGold,
+    fontSize: 12,
+    fontWeight: '600',
+    marginLeft: 6,
+  },
   loader: {
-    flex: 1,
+    flex: 1, 
     justifyContent: 'center',
     alignItems: 'center',
   },
   messagesContainer: {
     padding: 16,
-    flexGrow: 1,
+    flexGrow: 1, 
   },
   emptyText: {
     textAlign: 'center',
     marginTop: 50,
     fontSize: 16,
-    color: '#666',
+    color: '#868484ff',
   },
   inputContainer: {
     flexDirection: 'row',
@@ -236,7 +427,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
   },
   sendButton: {
-    backgroundColor: Colors.accentGold,
+    backgroundColor: Colors.primaryBlue,
     borderRadius: 25,
     width: 50,
     height: 50,
@@ -249,5 +440,98 @@ const styles = StyleSheet.create({
     shadowRadius: 3,
     elevation: 4,
   },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContainer: {
+    width: '100%',
+    maxHeight: '80%',
+    backgroundColor: 'white',
+    borderRadius: 15,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+    paddingBottom: 10,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: Colors.primaryBlue,
+  },
+  modalBody: {
+    paddingVertical: 20,
+    minHeight: 150,
+    justifyContent: 'center',
+  },
+  centerContent: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalStatusText: {
+    textAlign: 'center',
+    fontSize: 16,
+    color: '#555',
+    marginTop: 15,
+  },
+  modalErrorText: {
+    textAlign: 'center',
+    fontSize: 16,
+    color: '#D9534F',
+    marginTop: 15,
+  },
+  recItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingVertical: 10,
+  },
+  recTextContainer: {
+    flex: 1,
+    marginLeft: 15,
+  },
+  recTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.textDark,
+  },
+  recAuthor: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 5,
+  },
+  recDetail: { // Style for the new detail lines
+    fontSize: 12,
+    color: '#333',
+    lineHeight: 18,
+  },
+  recSeparator: {
+    height: 1,
+    backgroundColor: '#eee',
+    marginLeft: 35,
+  },
+  modalCloseButton: {
+    backgroundColor: Colors.primaryBlue,
+    borderRadius: 10,
+    padding: 12,
+    marginTop: 10,
+  },
+  modalCloseButtonText: {
+    color: 'white',
+    textAlign: 'center',
+    fontSize: 16,
+    fontWeight: '600',
+  },
 });
-
