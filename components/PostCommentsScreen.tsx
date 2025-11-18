@@ -3,13 +3,12 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
   addDoc,
   collection,
-  doc,
   getDocs,
   orderBy,
   query,
   serverTimestamp,
 } from 'firebase/firestore';
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -43,13 +42,8 @@ export default function CommentsScreen() {
   const [loading, setLoading] = useState(true);
   const [newComment, setNewComment] = useState('');
 
-  useEffect(() => {
-    if (postId) {
-      fetchComments();
-    }
-  }, [postId]);
-
-  const fetchComments = async () => {
+  const fetchComments = useCallback(async () => {
+    if (!postId) return;
     try {
       setLoading(true);
       const commentsRef = collection(db, 'posts', postId!, 'comments');
@@ -67,7 +61,13 @@ export default function CommentsScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [postId]);
+
+  useEffect(() => {
+    if (postId) {
+      fetchComments();
+    }
+  }, [postId, fetchComments]);
 
   const handleAddComment = async () => {
     if (!user || !newComment.trim() || !postId) return;

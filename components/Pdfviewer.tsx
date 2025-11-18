@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { ComponentProps, useState, useEffect, useRef } from 'react';
 import { StyleSheet, View, Dimensions, ActivityIndicator, Text, TouchableOpacity, KeyboardAvoidingView, Modal, TouchableWithoutFeedback, TextInput, Button } from 'react-native';
-import Pdf, { type PdfDocumentProps } from 'react-native-pdf'; // this error is not real, ignore
+import Pdf from 'react-native-pdf'; // this error is not real, ignore
 import { updateBookPageCount } from '../utils/getBook';
 import { FontAwesome } from '@expo/vector-icons';
 import { auth } from '../config/firebase';
@@ -14,12 +14,15 @@ const CommentIcon = () => (
   <FontAwesome name="comment" size={20} color="#666" />
 );
 
+type PdfSource = ComponentProps<typeof Pdf>['source'];
+
 interface PdfViewerProps {
-  source: PdfDocumentProps['source'];
+  source: PdfSource;
   bookId: string;
+  onPageChanged?: (page: number, totalPages: number) => void;
 }
 
-export default function PdfViewer({ source, bookId }: PdfViewerProps) {
+export default function PdfViewer({ source, bookId, onPageChanged }: PdfViewerProps) {
   // Page stuff
   const [totalPages, setTotalPages] = useState<number>(0);
   const [currentPage, setCurrentPage] = useState<number>(1);
@@ -32,7 +35,7 @@ export default function PdfViewer({ source, bookId }: PdfViewerProps) {
   const textInputRef = useRef<TextInput>(null);
   
   // User stuff
-  const currentUserId = auth.currentUser?.uid || 'anonymous_user';
+  const currentUserId = auth?.currentUser?.uid || 'anonymous_user';
   
   useEffect(() => {
     if (!bookId || !currentPage) return;
@@ -79,6 +82,9 @@ export default function PdfViewer({ source, bookId }: PdfViewerProps) {
           onPageChanged={(page: number, numberOfPages: number) => {
             console.log(`Page turned: ${page}`) // DEBUG : remove later
             setCurrentPage(page);
+            if (onPageChanged) {
+              onPageChanged(page, numberOfPages);
+            }
           }}
           onError={(error: object) => {
             console.log(error);

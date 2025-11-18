@@ -1,7 +1,7 @@
 
 import { FontAwesome } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { collection, onSnapshot, Firestore, query, where, addDoc, serverTimestamp, doc, updateDoc, deleteDoc, runTransaction, arrayUnion, Timestamp } from 'firebase/firestore';
+import { collection, onSnapshot, Firestore, query, where, addDoc, serverTimestamp, doc, deleteDoc, runTransaction, arrayUnion, Timestamp } from 'firebase/firestore';
 import React, { useEffect, useState, useMemo } from 'react';
 import {
   FlatList,
@@ -342,7 +342,11 @@ export default function ChatScreen() {
           keyExtractor={(item) => item.uid}
           contentContainerStyle={styles.listContainer}
           ListHeaderComponent={<Text style={styles.listHeader}>Search Results</Text>}
-          ListEmptyComponent={<Text style={styles.emptyText}>No users found matching "{searchQuery}".</Text>}
+          ListEmptyComponent={
+            <Text style={styles.emptyText}>
+              No users found matching &quot;{searchQuery}&quot;.
+            </Text>
+          }
         />
       ) : (
          // Show Friend Requests and Friends List if query is empty
@@ -378,7 +382,7 @@ export default function ChatScreen() {
            ListEmptyComponent={
                 // Show specific message only if *both* requests and friends are empty
                 (incomingRequests.length === 0 && friendsList.length === 0) ? (
-                     <Text style={styles.emptyText}>You haven't added any friends yet. Use the search bar above!</Text>
+                     <Text style={styles.emptyText}>You haven&apos;t added any friends yet. Use the search bar above!</Text>
                 ) : null // Otherwise, one of the lists might be empty, but that's okay
            }
            contentContainerStyle={styles.listContainer}

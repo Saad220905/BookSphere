@@ -44,8 +44,9 @@ export default function SignupScreen() {
       await signUp(email, password);
       router.replace("/create/profile");
     } catch (error: any) {
-      //const errorMessage = getFirebaseErrorMessage(error);
-      //Alert.alert('Sign Up Error', errorMessage);
+      console.error('Sign up error:', error);
+      const fallbackMessage = 'Unable to create account. Please try again.';
+      Alert.alert('Sign Up Error', error?.message ?? fallbackMessage);
     } finally {
       setLoading(false);
     }

@@ -14,6 +14,29 @@ export default function LoginScreen() {
   const { signIn, isAuthAvailable } = useAuth();
   const router = useRouter();
 
+  // Forgot Password handler
+  const forgotPasswordHandler = async () => {
+    if (!email.trim()) {
+      Alert.alert("Required", "Please enter your email address in the field above to reset your password.");
+      return;
+    }
+    
+    try {
+      setLoading(true);
+      await resetPassword(email);
+      Alert.alert(
+        "Success", 
+        `Password reset email sent to ${email}. Please check your inbox (and spam folder).`
+      );
+    } catch (error: any) {
+      console.error("Password reset error:", error);
+      // Display a general error since we don't have getFirebaseErrorMessage active
+      Alert.alert('Reset Failed', 'Could not send reset email. Please ensure the email is correct and try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleLogin = async () => {
     if (!isAuthAvailable) {
       Alert.alert(
