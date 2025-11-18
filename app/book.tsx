@@ -119,7 +119,7 @@ export default function BookScreen() {
     } finally {
       setLoading(false);
     }
-  }, [id, db]);
+  }, [id]);
 
   useEffect(() => {
     if (id) {

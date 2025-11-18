@@ -15,6 +15,8 @@ export interface UserProfile {
   booksRead: number;
   createdAt: Date;
   updatedAt: Date;
+  favoriteGenres?: string[];
+  friends?: string[];
 }
 
 export class UserProfileError extends Error {

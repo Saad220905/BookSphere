@@ -31,7 +31,7 @@
     "expo-router": "~6.0.14",
     "expo-splash-screen": "~31.0.10",
     "expo-status-bar": "~3.0.8",
-    "expo-video": "~3.0.12",
+    "expo-video": "~3.0.14",
     "firebase": "^11.10.0",
     "firebase-admin": "^13.5.0",
     "firebase-functions": "^6.6.0",
@@ -55,7 +55,7 @@
     "eslint": "^9.25.0",
     "eslint-config-expo": "~10.0.0",
     "eslint-plugin-react-native": "^5.0.0",
-    "expo": "^54.0.18",
+    "expo": "54.0.23",
     "typescript": "~5.9.2"
   },
   "private": true

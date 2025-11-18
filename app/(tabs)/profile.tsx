@@ -29,11 +29,21 @@ interface UserPost {
   bookAuthor?: string;
 }
 
+interface UserRecommendation {
+  id: string;
+  bookTitle: string;
+  bookAuthor: string;
+  recommenderName: string; 
+  recommendedAt: any;
+  note?: string; 
+}
+
 export default function ProfileScreen() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [userPosts, setUserPosts] = useState<UserPost[]>([]);
+  const [userRecommendations] = useState<UserRecommendation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'posts' | 'videos' | 'books'>('posts');
+  const [activeTab, setActiveTab] = useState<'posts' | 'videos' | 'books' | 'recommendation'>('posts');
   const { user } = useAuth();
 
   // Load profile (Firestore or mock)
@@ -126,6 +136,30 @@ export default function ProfileScreen() {
     </View>
   );
 
+  const renderRecommendation = ({ item }: { item: UserRecommendation }) => (
+    <View style={styles.postCard}>
+      <Text style={styles.recommendationHeader}>
+        Recommended by **{item.recommenderName}**
+      </Text>
+      <View style={styles.bookInfo}>
+        <FontAwesome name="book" size={16} color="#0a7ea4" />
+        <Text style={styles.bookText}>
+          {item.bookTitle} by {item.bookAuthor}
+        </Text>
+      </View>
+      {item.note && (
+        <View style={styles.noteContainer}>
+          <FontAwesome name="quote-left" size={12} color="#666" style={{ marginRight: 5 }} />
+          <Text style={styles.recommendationNote}>{item.note}</Text>
+        </View>
+      )}
+      <TouchableOpacity style={styles.actionButton}>
+        <Text style={styles.actionButtonText}>View Details</Text>
+        <FontAwesome name="chevron-right" size={12} color="#fff" />
+      </TouchableOpacity>
+    </View>
+  );
+
   const renderGenreTag = (genre: string) => (
     <View key={genre} style={styles.genreTag}>
       <Text style={styles.genreText}>{genre}</Text>
@@ -205,6 +239,12 @@ export default function ProfileScreen() {
           >
             <Text style={[styles.tabText, activeTab === 'books' && styles.activeTabText]}>Books</Text>
           </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'recommendation' && styles.activeTab]}
+            onPress={() => setActiveTab('recommendation')}
+          >
+            <Text style={[styles.tabText, activeTab === 'recommendation' && styles.activeTabText]}>Recommendation</Text>
+          </TouchableOpacity>
         </View>
 
         {activeTab === 'posts' && (
@@ -214,6 +254,21 @@ export default function ProfileScreen() {
             keyExtractor={(item) => item.id}
             scrollEnabled={false}
             contentContainerStyle={styles.postsList}
+          />
+        )}
+
+        {activeTab === 'recommendation' && (
+          <FlatList
+            data={userRecommendations}
+            renderItem={renderRecommendation}
+            keyExtractor={(item) => item.id}
+            scrollEnabled={false}
+            contentContainerStyle={styles.postsList} // Re-using existing style
+            ListEmptyComponent={() => (
+              <View style={styles.emptyList}>
+                <Text style={styles.emptyText}>No book recommendation yet. Share your profile with friends!</Text>
+              </View>
+            )}
           />
         )}
 
@@ -407,5 +462,50 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 24,
     fontWeight: 'bold',
+  },
+  recommendationHeader: {
+    fontSize: 14,
+    color: '#333',
+    marginBottom: 8,
+  },
+  recommendationNote: {
+    color: '#666',
+    fontSize: 14,
+    fontStyle: 'italic',
+  },
+  noteContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#eee',
+    borderRadius: 8,
+    padding: 8,
+    marginVertical: 10,
+  },
+  actionButton: {
+    backgroundColor: '#0a7ea4',
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginTop: 10,
+    flexDirection: 'row',
+    alignSelf: 'flex-start',
+    alignItems: 'center',
+    gap: 5,
+  },
+  actionButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  emptyList: {
+    padding: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 100,
+  },
+  emptyText: {
+    textAlign: 'center',
+    color: '#666',
+    fontSize: 16,
   },
 });

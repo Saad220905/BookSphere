@@ -1,13 +1,13 @@
 import { FontAwesome } from '@expo/vector-icons';
-import { router } from 'expo-router';
-import { addDoc, collection, doc, getDoc, getDocs, orderBy, query, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, orderBy, query, updateDoc } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
-import { FlatList, Image, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
+import { FlatList, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Text } from '../../components/Themed';
 import UserAvatar from '../../components/UserAvatar';
 import { db } from '../../config/firebase';
 import { useAuth } from '../../contexts/AuthContext';
+import CreatePostModal from '../../components/CreatePostModal';
 
 interface FeedPost {
   id: string;
@@ -17,7 +17,6 @@ interface FeedPost {
   userPhotoURL?: string;
   bookTitle?: string;
   bookAuthor?: string;
-  bookCoverUrl?: string;
   likes: number;
   comments: number;
   createdAt: any;
@@ -26,9 +25,9 @@ interface FeedPost {
 
 export default function FeedScreen() {
   const [posts, setPosts] = useState<FeedPost[]>([]);
-  const [newPost, setNewPost] = useState('');
   const [loading, setLoading] = useState(true);
   const { user } = useAuth();
+  const [isModalVisible, setIsModalVisible] = useState(false);
 
   useEffect(() => {
     loadPosts();
@@ -54,29 +53,6 @@ export default function FeedScreen() {
       console.error('Error loading posts:', error);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleCreatePost = async () => {
-    if (!user || !newPost.trim() || !db) return;
-
-    try {
-      const postData = {
-        content: newPost.trim(),
-        userId: user.uid,
-        userDisplayName: user.displayName || 'Anonymous',
-        userPhotoURL: user.photoURL,
-        likes: 0,
-        comments: 0,
-        likedBy: [],
-        createdAt: serverTimestamp(),
-      };
-
-      await addDoc(collection(db, 'posts'), postData);
-      setNewPost('');
-      loadPosts(); // Refresh the feed
-    } catch (error) {
-      console.error('Error creating post:', error);
     }
   };
 
@@ -130,10 +106,6 @@ export default function FeedScreen() {
 
         {item.bookTitle && (
           <View style={styles.bookInfo}>
-            <Image
-              source={{ uri: item.bookCoverUrl || 'https://via.placeholder.com/60x80' }}
-              style={styles.bookCover}
-            />
             <View style={styles.bookDetails}>
               <Text style={styles.bookTitle}>{item.bookTitle}</Text>
               <Text style={styles.bookAuthor}>by {item.bookAuthor}</Text>
@@ -173,36 +145,19 @@ export default function FeedScreen() {
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>BookFeed</Text>
-        <TouchableOpacity onPress={() => router.push('/create/post')}>
+        <TouchableOpacity onPress={() => setIsModalVisible(true)}>
           <FontAwesome name="plus" size={24} color="#0a7ea4" />
         </TouchableOpacity>
       </View>
 
-      <View style={styles.createPost}>
-        <UserAvatar
-          photoUrl={user?.photoURL || undefined}
-          displayName={user?.displayName || 'Anonymous'}
-          size={40}
-        />
-        <View style={styles.inputContainer}>
-          <TextInput
-            style={styles.postInput}
-            value={newPost}
-            onChangeText={setNewPost}
-            placeholder="What are you reading?"
-            placeholderTextColor="#999"
-            multiline
-            maxLength={280}
-          />
-          <TouchableOpacity
-            style={[styles.postButton, !newPost.trim() && styles.postButtonDisabled]}
-            onPress={handleCreatePost}
-            disabled={!newPost.trim()}
-          >
-            <Text style={styles.postButtonText}>Post</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+      <CreatePostModal
+        visible={isModalVisible}
+        onClose={() => setIsModalVisible(false)}
+        onPostCreated={() => {
+          loadPosts();
+          setIsModalVisible(false);
+        }}
+      />
 
       <FlatList
         data={posts}
@@ -231,11 +186,6 @@ const styles = StyleSheet.create({
     color: '#666',
     fontSize: 12,
   },
-  bookCover: {
-    borderRadius: 4,
-    height: 60,
-    width: 40,
-  },
   bookDetails: {
     flex: 1,
     marginLeft: 12,
@@ -256,12 +206,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     flex: 1,
   },
-  createPost: {
-    borderBottomColor: '#eee',
-    borderBottomWidth: 1,
-    flexDirection: 'row',
-    padding: 16,
-  },
   feedList: {
     padding: 16,
   },
@@ -273,32 +217,12 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     padding: 16,
   },
-  inputContainer: {
-    flex: 1,
-    marginLeft: 12,
-  },
   likedText: {
     color: '#ff4444',
   },
   postActions: {
     flexDirection: 'row',
     gap: 24,
-  },
-  postButton: {
-    alignSelf: 'flex-end',
-    backgroundColor: '#0a7ea4',
-    borderRadius: 20,
-    marginTop: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-  },
-  postButtonDisabled: {
-    backgroundColor: '#ccc',
-  },
-  postButtonText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
   },
   postCard: {
     backgroundColor: '#fff',
@@ -321,15 +245,6 @@ const styles = StyleSheet.create({
   postInfo: {
     flex: 1,
     marginLeft: 12,
-  },
-  postInput: {
-    borderColor: '#eee',
-    borderRadius: 20,
-    borderWidth: 1,
-    fontSize: 16,
-    minHeight: 40,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
   },
   postTime: {
     color: '#666',

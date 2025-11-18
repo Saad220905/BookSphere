@@ -100,14 +100,7 @@ export function listenForComments(bookId: string, page: number, callback: (comme
     });
     // Sort by likes then creation time
     comments.sort((a, b) => (b.likeCount - a.likeCount) || (b.createdAt?.seconds - a.createdAt?.seconds));
-
-    //Modification/Addition for overall page scoring
-    // Calculate the overall sentiment
-    const pageSentiment = calculatePageSentiment(comments);
-
-    // Pass BOTH the comments and the new pageSentiment to the frontend
-    callback(comments, pageSentiment);
-    //callback(comments);
+    callback(comments);
   }, (error) => {
     console.error("Error listening for comments: ", error);
   });

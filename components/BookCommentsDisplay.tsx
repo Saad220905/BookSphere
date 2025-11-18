@@ -231,9 +231,7 @@ export default function BookCommentsDisplay({
     </KeyboardAvoidingView>
   );
 }
-// ---------------------------------------------------------------------------------------
-// STYLES
-// ---------------------------------------------------------------------------------------
+
 const styles = StyleSheet.create({
   modalContainer: { 
     height: '100%',

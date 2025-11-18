@@ -49,24 +49,6 @@ async function initializeFirebase() {
         console.warn('⚠️ Could not initialize Firestore with settings, falling back to default config');
         db = getFirestore(app);
       }
-      
-      // Enable offline persistence
-      /*
-      try {
-        await enableIndexedDbPersistence(db);
-        console.log('Firestore offline persistence enabled');
-      } catch (error: any) {
-        if (error.code === 'failed-precondition') {
-          console.warn('📱 Firestore persistence disabled: Multiple tabs open');
-        } else if (error.code === 'unimplemented') {
-          console.warn('📱 Firestore persistence not supported in this environment');
-        } else {
-          console.warn('⚠️ Firestore persistence error:', error);
-        }
-      }
-      */
-      
-      
       console.log('Firestore initialized successfully');
     } catch (dbError) {
       console.error('Firestore initialization failed:', dbError);

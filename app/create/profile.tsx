@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Text } from '../../components/Themed';
-import { db, auth } from '../../config/firebase';
+import { db } from '../../config/firebase';
 import { useAuth } from '../../contexts/AuthContext';
 
 const GENRES = [
@@ -33,7 +33,7 @@ export default function CreateProfile() {
   const [readingGoal, setReadingGoal] = useState('');
   const [booksRead, setBooksRead] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [isUploadingImage] = useState(false);
   const { user } = useAuth();
 
   const pickImage = async () => {
@@ -183,7 +183,7 @@ export default function CreateProfile() {
         <View style={styles.welcomeSection}>
           <Text style={styles.welcomeTitle}>Welcome to BookSphere!</Text>
           <Text style={styles.welcomeSubtitle}>
-            Let's set up your reading profile
+            Let&apos;s set up your reading profile
           </Text>
         </View>
 
@@ -234,10 +234,10 @@ export default function CreateProfile() {
             onChangeText={setDisplayName}
             placeholder="Enter your name"
             placeholderTextColor="#999"
-            maxLength={50}
+            maxLength={8}
           />
           {displayName.length > 0 && (
-            <Text style={styles.characterCount}>{displayName.length}/50</Text>
+            <Text style={styles.characterCount}>{displayName.length}/8</Text>
           )}
         </View>
 
@@ -254,10 +254,10 @@ export default function CreateProfile() {
             placeholder="I love reading because..."
             placeholderTextColor="#999"
             multiline
-            maxLength={500}
+            maxLength={100}
             textAlignVertical="top"
           />
-          <Text style={styles.characterCount}>{bio.length}/500</Text>
+          <Text style={styles.characterCount}>{bio.length}/100</Text>
         </View>
 
         <View style={styles.section}>

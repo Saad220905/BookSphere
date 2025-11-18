@@ -13,12 +13,15 @@ const CommentIcon = () => (
   <FontAwesome name="comment" size={20} color="#666" />
 );
 
+type PdfSource = ComponentProps<typeof Pdf>['source'];
+
 interface PdfViewerProps {
-  source: PdfDocumentProps['source'];
+  source: PdfSource;
   bookId: string;
+  onPageChanged?: (page: number, totalPages: number) => void;
 }
 
-export default function PdfViewer({ source, bookId }: PdfViewerProps) {
+export default function PdfViewer({ source, bookId, onPageChanged }: PdfViewerProps) {
   // Page stuff
   const [totalPages, setTotalPages] = useState<number>(0);
   const [currentPage, setCurrentPage] = useState<number>(1);
@@ -82,6 +85,9 @@ export default function PdfViewer({ source, bookId }: PdfViewerProps) {
           onPageChanged={(page: number, numberOfPages: number) => {
             console.log(`Page turned: ${page}`) // DEBUG : remove later
             setCurrentPage(page);
+            if (onPageChanged) {
+              onPageChanged(page, numberOfPages);
+            }
           }}
           onError={(error: object) => {
             console.log(error);
