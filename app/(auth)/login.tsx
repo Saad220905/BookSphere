@@ -16,7 +16,7 @@ export default function LoginScreen() {
   const router = useRouter();
 
   // Forgot Password handler
-  const forgotPasswordHandler = async () => {
+  const forgotPasswordHandler = async () => {
     if (!email.trim()) {
       Alert.alert("Required", "Please enter your email address in the field above to reset your password.");
       return;

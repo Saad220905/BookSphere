@@ -46,7 +46,7 @@ export default function ClubsScreen() {
         ...doc.data(),
       })) as BookClub[];
       
-      //setClubs(clubsData);
+      setClubs(clubsData);
     } catch (error) {
       console.error('Error loading clubs:', error);
     } finally {

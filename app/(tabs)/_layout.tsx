@@ -1,64 +1,68 @@
 import React from 'react';
-import {
-  Animated,
-  Easing,
-  View,
-  useColorScheme,
-  StyleSheet,
-} from 'react-native';
+import { Animated, Easing, useColorScheme, StyleSheet } from 'react-native';
 import { FontAwesome } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+type IconName = React.ComponentProps<typeof FontAwesome>['name'];
+
+interface AnimatedTabIconProps {
+  name: IconName;
+  focused: boolean;
+  color: string;
+}
+
+const AnimatedTabIcon: React.FC<AnimatedTabIconProps> = ({ name, focused, color }) => {
+  const scale = React.useRef(new Animated.Value(focused ? 1.2 : 1)).current;
+  const translateY = React.useRef(new Animated.Value(focused ? -6 : 0)).current;
+  const glow = focused ? '#0a7ea4' : 'transparent';
+
+  React.useEffect(() => {
+    Animated.parallel([
+      Animated.spring(scale, {
+        toValue: focused ? 1.3 : 1,
+        friction: 5,
+        tension: 100,
+        useNativeDriver: true,
+      }),
+      Animated.timing(translateY, {
+        toValue: focused ? -6 : 0,
+        duration: 250,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [focused, scale, translateY]);
+
+  return (
+    <Animated.View
+      style={[
+        styles.iconWrapper,
+        {
+          transform: [{ scale }, { translateY }],
+          shadowColor: glow,
+          shadowOpacity: focused ? 0.4 : 0,
+          shadowRadius: 10,
+          shadowOffset: { width: 0, height: 3 },
+        },
+      ]}
+    >
+      <FontAwesome name={name} size={26} color={color} />
+    </Animated.View>
+  );
+};
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const insets = useSafeAreaInsets();
 
-  const renderIcon = (name: React.ComponentProps<typeof FontAwesome>['name']) => {
-    return ({ color, focused }: { color: string; focused: boolean }) => {
-      const scale = React.useRef(new Animated.Value(focused ? 1.2 : 1)).current;
-      const translateY = React.useRef(new Animated.Value(focused ? -6 : 0)).current;
-      const glow = focused ? '#0a7ea4' : 'transparent';
-
-      React.useEffect(() => {
-        Animated.parallel([
-          Animated.spring(scale, {
-            toValue: focused ? 1.3 : 1,
-            friction: 5,
-            tension: 100,
-            useNativeDriver: true,
-          }),
-          Animated.timing(translateY, {
-            toValue: focused ? -6 : 0,
-            duration: 250,
-            easing: Easing.out(Easing.quad),
-            useNativeDriver: true,
-          }),
-        ]).start();
-      }, [focused]);
-
-      return (
-        <Animated.View
-          style={[
-            styles.iconWrapper,
-            {
-              transform: [{ scale }, { translateY }],
-              shadowColor: glow,
-              shadowOpacity: focused ? 0.4 : 0,
-              shadowRadius: 10,
-              shadowOffset: { width: 0, height: 3 },
-            },
-          ]}
-        >
-          <FontAwesome
-            name={name}
-            size={26}
-            color={focused ? '#0a7ea4' : '#777'}
-          />
-        </Animated.View>
-      );
-    };
+  const renderIcon = (name: IconName) => {
+    const TabIcon = ({ color, focused }: { color: string; focused: boolean }) => (
+      <AnimatedTabIcon name={name} focused={focused} color={focused ? '#0a7ea4' : color} />
+    );
+    TabIcon.displayName = `${name}-icon`;
+    return TabIcon;
   };
 
   return (

@@ -151,7 +151,7 @@ export default function CreatePostModal({ visible, onClose, onPostCreated }: Cre
 
             <View style={styles.tipsSection}>
               <Text style={styles.tipsTitle}>💡 Tips for great posts:</Text>
-              <Text style={styles.tipText}>• Share what you're currently reading</Text>
+              <Text style={styles.tipText}>• Share what you&apos;re currently reading</Text>
               <Text style={styles.tipText}>• Discuss your favorite characters</Text>
               <Text style={styles.tipText}>• Recommend books to others</Text>
               <Text style={styles.tipText}>• Share quotes that moved you</Text>

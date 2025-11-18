@@ -9,7 +9,6 @@ import UserAvatar from '../../components/UserAvatar';
 import { db } from '../../config/firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import { createMockUser, createMockProfile, createMockPosts } from '../../utils/mockData';
-import { Alert } from 'react-native'; // Import Alert
 
 interface UserProfile {
   bio?: string;
@@ -42,7 +41,7 @@ interface UserRecommendation {
 export default function ProfileScreen() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [userPosts, setUserPosts] = useState<UserPost[]>([]);
-  const [userRecommendations, setUserRecommendations] = useState<UserRecommendation[]>([]);
+  const [userRecommendations] = useState<UserRecommendation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'posts' | 'videos' | 'books' | 'recommendation'>('posts');
   const { user } = useAuth();

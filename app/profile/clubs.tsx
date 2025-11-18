@@ -85,7 +85,7 @@ export default function UserClubsScreen() {
       setError('Failed to initialize clubs');
       setIsLoading(false);
     }
-  }, [user, db]);
+  }, [user]);
 
   const handleClubPress = (clubId: string) => {
     router.push(`/clubs/${clubId}`);

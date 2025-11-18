@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Text } from '../../components/Themed';
-import { db, auth } from '../../config/firebase';
+import { db } from '../../config/firebase';
 import { useAuth } from '../../contexts/AuthContext';
 
 const GENRES = [
@@ -33,7 +33,7 @@ export default function CreateProfile() {
   const [readingGoal, setReadingGoal] = useState('');
   const [booksRead, setBooksRead] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [isUploadingImage] = useState(false);
   const { user } = useAuth();
 
   const pickImage = async () => {
@@ -183,7 +183,7 @@ export default function CreateProfile() {
         <View style={styles.welcomeSection}>
           <Text style={styles.welcomeTitle}>Welcome to BookSphere!</Text>
           <Text style={styles.welcomeSubtitle}>
-            Let's set up your reading profile
+            Let&apos;s set up your reading profile
           </Text>
         </View>
 
