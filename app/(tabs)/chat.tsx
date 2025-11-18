@@ -1,7 +1,6 @@
-
 import { FontAwesome } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { collection, onSnapshot, Firestore, query, where, addDoc, serverTimestamp, doc, deleteDoc, runTransaction, arrayUnion, Timestamp } from 'firebase/firestore';
+import { collection, onSnapshot, Firestore, query, where, addDoc, serverTimestamp, doc, updateDoc, deleteDoc, runTransaction, arrayUnion, Timestamp } from 'firebase/firestore';
 import React, { useEffect, useState, useMemo } from 'react';
 import {
   FlatList,
@@ -342,11 +341,7 @@ export default function ChatScreen() {
           keyExtractor={(item) => item.uid}
           contentContainerStyle={styles.listContainer}
           ListHeaderComponent={<Text style={styles.listHeader}>Search Results</Text>}
-          ListEmptyComponent={
-            <Text style={styles.emptyText}>
-              No users found matching &quot;{searchQuery}&quot;.
-            </Text>
-          }
+          ListEmptyComponent={<Text style={styles.emptyText}>No users found matching "{searchQuery}".</Text>}
         />
       ) : (
          // Show Friend Requests and Friends List if query is empty
@@ -382,7 +377,7 @@ export default function ChatScreen() {
            ListEmptyComponent={
                 // Show specific message only if *both* requests and friends are empty
                 (incomingRequests.length === 0 && friendsList.length === 0) ? (
-                     <Text style={styles.emptyText}>You haven&apos;t added any friends yet. Use the search bar above!</Text>
+                     <Text style={styles.emptyText}>You haven't added any friends yet. Use the search bar above!</Text>
                 ) : null // Otherwise, one of the lists might be empty, but that's okay
            }
            contentContainerStyle={styles.listContainer}
@@ -450,14 +445,14 @@ const styles = StyleSheet.create({
         alignItems: 'center', 
         paddingVertical: 14, // More vertical space
         paddingHorizontal: 8,
-        backgroundColor: '#96a3aaff',
+        backgroundColor: '#1a94bdff',
         borderBottomWidth: 1, 
-        borderBottomColor: '#152d1dff' // Lighter border
+        borderBottomColor: '#ffffffff' // Lighter border
     },
     userInfo: { flex: 1, marginLeft: 12 },
     userName: { fontSize: 16, fontWeight: '600', marginBottom: 2 },
     userGenres: { fontSize: 14, color: '#666' },
-    userActionText: { fontSize: 14, color: '#0a7ea4', fontWeight: '500' },
+    userActionText: { fontSize: 14, color: '#fafcfcff', fontWeight: '500' },
 
     // "Add Friend" Button (in search) ---
     addButton: {
@@ -465,7 +460,7 @@ const styles = StyleSheet.create({
         width: 40,
         height: 40,
         borderRadius: 20, // Circular
-        backgroundColor: '#e6f7ff', // Light blue background
+        backgroundColor: '#000000ff', // Light blue background
         justifyContent: 'center',
         alignItems: 'center',
     },
