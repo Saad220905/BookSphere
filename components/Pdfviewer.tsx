@@ -1,16 +1,15 @@
-import React, { ComponentProps, useState, useEffect, useRef } from 'react';
-import { StyleSheet, View, Dimensions, ActivityIndicator, Text, TouchableOpacity, KeyboardAvoidingView, Modal, TouchableWithoutFeedback, TextInput, Button } from 'react-native';
-import Pdf from 'react-native-pdf'; // this error is not real, ignore
+import React, { useState, useEffect, useRef } from 'react';
+import { StyleSheet, View, Dimensions, ActivityIndicator, Text, TouchableOpacity, KeyboardAvoidingView, Modal, TouchableWithoutFeedback, TextInput, Button, Platform } from 'react-native';
+import Pdf, { type PdfDocumentProps } from 'react-native-pdf'; // this error is not real, ignore
 import { updateBookPageCount } from '../utils/getBook';
 import { FontAwesome } from '@expo/vector-icons';
 import { auth } from '../config/firebase';
 
 // Comment imports
 import BookCommentsDisplay from './BookCommentsDisplay';
-import { listenForComments, addComment , Comment } from '../utils/bookComments';
+import { listenForComments, addComment , Comment , PageSentiment } from '../utils/bookComments';
 
 const CommentIcon = () => (
-
   <FontAwesome name="comment" size={20} color="#666" />
 );
 
@@ -33,16 +32,19 @@ export default function PdfViewer({ source, bookId, onPageChanged }: PdfViewerPr
   const [isCommentSectionVisible, setIsCommentSectionVisible] = useState(false);
   const [newComment, setNewComment] = useState('');
   const textInputRef = useRef<TextInput>(null);
+  const [isSpoiler, setIsSpoiler] = useState(false);
   
   // User stuff
-  const currentUserId = auth?.currentUser?.uid || 'anonymous_user';
+  const currentUserId = auth.currentUser?.uid || 'anonymous_user';
+  const [pageSentiment, setPageSentiment] = useState<PageSentiment>('Neutral');
   
   useEffect(() => {
     if (!bookId || !currentPage) return;
 
     // Start listening for comments on the current page of the current book
-    const unsubscribe = listenForComments(bookId, currentPage, (newComments) => {
+    const unsubscribe = listenForComments(bookId, currentPage, (newComments, newPageSentiment) => {
       setComments(newComments);
+      setPageSentiment(newPageSentiment);
     });
 
     // Stops listening for comments when the page or book changes
@@ -52,8 +54,9 @@ export default function PdfViewer({ source, bookId, onPageChanged }: PdfViewerPr
   const handlePostComment = (textFromInput?: string) => {
     const commentText = textFromInput ?? newComment;
     if (commentText.trim() === '') { return; }
-    addComment(bookId, currentPage, commentText, currentUserId); 
+    addComment(bookId, currentPage, commentText, currentUserId, isSpoiler); 
     setNewComment(''); 
+    setIsSpoiler(false);
     textInputRef.current?.blur(); 
   };
 
@@ -64,7 +67,7 @@ export default function PdfViewer({ source, bookId, onPageChanged }: PdfViewerPr
 
   return (
     <KeyboardAvoidingView
-      behavior={"padding"}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
       style={styles.container}
     >  
       <View style={styles.pdfViewContainer}>
@@ -125,6 +128,11 @@ export default function PdfViewer({ source, bookId, onPageChanged }: PdfViewerPr
             onChangeText={setNewComment}
             multiline={true}
           />
+
+          <TouchableOpacity style={styles.spoilerToggle} onPress={() => setIsSpoiler(!isSpoiler)}>
+            <FontAwesome name={isSpoiler ? 'eye-slash' : 'eye'} size={20} color={isSpoiler ? '#007AFF' : '#8e8e93'} />
+          </TouchableOpacity>
+
           <Button title="Post" onPress={() => handlePostComment()} disabled={!newComment.trim()} />
         </View>
         )}
@@ -147,12 +155,15 @@ export default function PdfViewer({ source, bookId, onPageChanged }: PdfViewerPr
             <View style={styles.modalContentContainer}>
               <BookCommentsDisplay
                 bookId={bookId}
-                currentUserId={currentUserId} // CHANGE LATER
+                currentUserId={currentUserId} 
                 comments={comments}
                 onPostComment={handlePostComment}
                 onClose={() => setIsCommentSectionVisible(false)}
                 commentInputValue={newComment}
                 onCommentInputChange={setNewComment}
+                pageSentiment={pageSentiment}
+                isSpoiler={isSpoiler}
+                setIsSpoiler={setIsSpoiler}
               />
             </View>
           </TouchableWithoutFeedback>
@@ -247,5 +258,9 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     overflow: 'hidden',
+  },
+  spoilerToggle: {
+    padding: 8,
+    marginRight: 8,
   },
 });

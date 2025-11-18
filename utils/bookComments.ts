@@ -1,4 +1,4 @@
-import { collection, query, where, onSnapshot, addDoc, serverTimestamp, Firestore, doc, runTransaction, arrayUnion, arrayRemove, increment } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, addDoc, serverTimestamp, Firestore, doc, runTransaction, arrayUnion, arrayRemove, increment, deleteDoc } from 'firebase/firestore';
 import { db } from '../config/firebase'; 
 import { GoogleGenAI } from '@google/genai';
 import { geminiConfig } from 'config/environment';
@@ -13,7 +13,10 @@ export interface Comment {
   likeCount: number; 
   likedBy: string[];  
   sentiment: 'Positive' | 'Negative' | 'Neutral' | 'AnalysisError';
+  isSpoiler: boolean;
 }
+
+export type PageSentiment = 'Positive' | 'Negative' | 'Neutral' | 'Mixed';
 
 class CommentError extends Error {
   constructor(message: string) {
@@ -29,7 +32,51 @@ function getFirestoreInstance(): Firestore {
   return db;
 }
 
-export function listenForComments(bookId: string, page: number, callback: (comments: Comment[]) => void) {
+// New function to calculate the overall sentiment score per page
+function calculatePageSentiment(comments: Comment[]): 'Positive' | 'Negative' | 'Neutral' | 'Mixed' {
+  if (comments.length === 0) {
+    return 'Neutral'; // No comments means neutral mood
+  }
+
+  // 1. Assign numerical weights
+  let totalScore = 0;
+  let validCount = 0;
+
+  const sentimentWeights: { [key: string]: number } = {
+    'Positive': 2,
+    'Neutral': 0,
+    'Negative': -2,
+    'AnalysisError': 0, // Errors don't influence the page score
+  };
+
+  comments.forEach(comment => {
+    const sentiment = comment.sentiment || 'AnalysisError';
+    totalScore += sentimentWeights[sentiment];
+    if (sentiment !== 'AnalysisError') {
+        validCount++;
+    }
+  });
+
+  if (validCount === 0) {
+      return 'Neutral'; // All comments were errors
+  }
+
+  // 2. Determine the average score
+  const averageScore = totalScore / validCount;
+
+  // 3. Map score to final sentiment string
+  if (averageScore > 1.0) {
+    return 'Positive';
+  } else if (averageScore < -1.0) {
+    return 'Negative';
+  } else if (Math.abs(averageScore) <= 0.5) {
+    return 'Neutral';
+  } else {
+    return 'Mixed'; // A mix of strong positive and negative comments
+  }
+}
+
+export function listenForComments(bookId: string, page: number, callback: (comments: Comment[], pageSentiment: PageSentiment) => void) {
   const firestore = getFirestoreInstance();
   const commentsRef = collection(firestore, `books/${bookId}/comments`);
   const q = query(commentsRef, where('page', '==', page));
@@ -48,6 +95,7 @@ export function listenForComments(bookId: string, page: number, callback: (comme
         likeCount: data.likeCount || 0,
         likedBy: data.likedBy || [],
         sentiment: data.sentiment as Comment['sentiment'] || 'AnalysisError',
+        isSpoiler: data.isSpoiler || false,
       } as Comment);
     });
     // Sort by likes then creation time
@@ -60,7 +108,7 @@ export function listenForComments(bookId: string, page: number, callback: (comme
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
-export async function addComment(bookId: string, page: number, text: string, userId: string) {
+export async function addComment(bookId: string, page: number, text: string, userId: string, isSpoiler: boolean) {
   const firestore = getFirestoreInstance();
   const commentsRef = collection(firestore, `books/${bookId}/comments`);
 
@@ -118,6 +166,7 @@ export async function addComment(bookId: string, page: number, text: string, use
     likedBy: [],
     // --- 3. SAVE COMMENT AND SENTIMENT TO FIRESTORE ---
     sentiment: sentimentResult,
+    isSpoiler: isSpoiler,
   });
 }
 
@@ -151,5 +200,15 @@ export async function toggleLike(bookId:string, commentId: string, userId: strin
   } catch (e) {
     console.error("Like transaction failed: ", e);
     throw new CommentError("Could not update like status.");
+  }
+}
+
+export async function deleteComment(bookId: string, commentId: string): Promise<void> {
+  const firestore = getFirestoreInstance();
+  const commentRef = doc(firestore, `books/${bookId}/comments`, commentId);
+  try {
+    await deleteDoc(commentRef);
+  } catch (e) {
+    throw new CommentError("Could not delete comment.");
   }
 }
