@@ -10,7 +10,15 @@ import BookCommentsDisplay from './BookCommentsDisplay';
 import { listenForComments, addComment , Comment , PageSentiment } from '../utils/bookComments';
 
 const CommentIcon = () => (
-  <FontAwesome name="comment" size={20} color="#666" />
+  <FontAwesome name="comment" size={20} color="#8e8e93" />
+);
+
+const NightModeToggleIcon = ({ active }: { active: boolean }) => (
+  <FontAwesome 
+    name={active ? "moon-o" : "sun-o"} 
+    size={24} 
+    color={active ? "#FFD700" : "#8e8e93"} 
+  />
 );
 
 type PdfSource = ComponentProps<typeof Pdf>['source'];
@@ -19,9 +27,11 @@ interface PdfViewerProps {
   source: PdfSource;
   bookId: string;
   onPageChanged?: (page: number, totalPages: number) => void;
+  isNightMode: boolean; 
+  setIsNightMode: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
-export default function PdfViewer({ source, bookId, onPageChanged }: PdfViewerProps) {
+export default function PdfViewer({ source, bookId, onPageChanged, isNightMode, setIsNightMode }: PdfViewerProps) {
   // Page stuff
   const [totalPages, setTotalPages] = useState<number>(0);
   const [currentPage, setCurrentPage] = useState<number>(1);
@@ -67,7 +77,7 @@ export default function PdfViewer({ source, bookId, onPageChanged }: PdfViewerPr
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      behavior={"padding"}
       style={styles.container}
     >  
       <View style={styles.pdfViewContainer}>
@@ -93,7 +103,7 @@ export default function PdfViewer({ source, bookId, onPageChanged }: PdfViewerPr
             console.log(error);
             setIsLoading(false);
           }}
-          style={styles.pdf}
+          style={[styles.pdf, isNightMode && styles.pdfNight]}
         />
 
         {/* Loading screen */}
@@ -102,6 +112,10 @@ export default function PdfViewer({ source, bookId, onPageChanged }: PdfViewerPr
             <ActivityIndicator size="large" />
           </View>
         )}
+        {/* Night mode dimmer */}
+        {isNightMode && (
+          <View style={styles.nightModeDimmer} pointerEvents="none" />
+        )}
         {/* Page count */}
         {!isLoading && (
           <View style={styles.pageCountContainer}>
@@ -109,6 +123,15 @@ export default function PdfViewer({ source, bookId, onPageChanged }: PdfViewerPr
               Page {currentPage} of {totalPages}
             </Text>
           </View>
+        )}
+        {/* Night mode toggle */}
+        {!isLoading && (
+          <TouchableOpacity 
+            style={styles.nightModeToggle} 
+            onPress={() => setIsNightMode(!isNightMode)}
+          >
+            <NightModeToggleIcon active={isNightMode} />
+          </TouchableOpacity>
         )}
       </View>
         {!isLoading && (
@@ -152,7 +175,7 @@ export default function PdfViewer({ source, bookId, onPageChanged }: PdfViewerPr
         >
           {/* Comments */}
           <TouchableWithoutFeedback>
-            <View style={styles.modalContentContainer}>
+            <View style={[styles.modalContentContainer, isNightMode && styles.modalNight]}>
               <BookCommentsDisplay
                 bookId={bookId}
                 currentUserId={currentUserId} 
@@ -164,6 +187,7 @@ export default function PdfViewer({ source, bookId, onPageChanged }: PdfViewerPr
                 pageSentiment={pageSentiment}
                 isSpoiler={isSpoiler}
                 setIsSpoiler={setIsSpoiler}
+                isNightMode={isNightMode} 
               />
             </View>
           </TouchableWithoutFeedback>
@@ -183,6 +207,27 @@ const styles = StyleSheet.create({
   pdf: {
     flex: 1,
     width: Dimensions.get('window').width,
+    backgroundColor: '#fff', 
+  },
+  pdfNight: {
+    backgroundColor: '#121212', 
+  },
+  nightModeDimmer: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.4)', 
+    zIndex: 1, 
+  },
+  nightModeToggle: {
+    position: 'absolute',
+    top: 20,
+    right: 20,
+    padding: 8,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    borderRadius: 20,
+    zIndex: 2, 
+  },
+  modalNight: {
+    backgroundColor: '#1c1c1e',
   },
   loaderOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -258,6 +303,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     overflow: 'hidden',
+    backgroundColor: '#1c1c1e'
   },
   spoilerToggle: {
     padding: 8,
