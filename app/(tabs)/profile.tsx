@@ -1,6 +1,6 @@
 import { FontAwesome } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { collection, doc, getDoc, getDocs, orderBy, query, where } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, orderBy, query, where, onSnapshot } from 'firebase/firestore';
 import React, { useCallback, useEffect, useState } from 'react';
 import { FlatList, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -9,6 +9,7 @@ import UserAvatar from '../../components/UserAvatar';
 import { db } from '../../config/firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import { createMockUser, createMockProfile, createMockPosts } from '../../utils/mockData';
+import { Alert } from 'react-native'; // Import Alert
 
 interface UserProfile {
   bio?: string;
@@ -29,46 +30,76 @@ interface UserPost {
   bookAuthor?: string;
 }
 
-interface UserRecommendation {
-  id: string;
-  bookTitle: string;
-  bookAuthor: string;
-  recommenderName: string; 
-  recommendedAt: any;
-  note?: string; 
-}
-
 export default function ProfileScreen() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [userPosts, setUserPosts] = useState<UserPost[]>([]);
-  const [userRecommendations] = useState<UserRecommendation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'posts' | 'videos' | 'books' | 'recommendation'>('posts');
+  const [activeTab, setActiveTab] = useState<'posts' | 'videos' | 'books'>('posts');
   const { user } = useAuth();
 
   // Load profile (Firestore or mock)
-  const loadProfile = useCallback(async () => {
-    try {
-      if (!db || !user) {
-        const mockProfile = createMockProfile();
-        setProfile(mockProfile);
+  // const loadProfile = useCallback(async () => {
+  //   try {
+  //     if (!db || !user) {
+  //       const mockProfile = createMockProfile();
+  //       setProfile(mockProfile);
+  //       setIsLoading(false);
+  //       return;
+  //     }
+
+  //     const profileDoc = await getDoc(doc(db, 'users', user.uid));
+  //     if (profileDoc.exists()) {
+  //       setProfile(profileDoc.data() as UserProfile);
+  //     } else {
+  //       setProfile(createMockProfile());
+  //     }
+  //   } catch (error) {
+  //     console.warn('Using mock profile due to error:', error);
+  //     setProfile(createMockProfile());
+  //   } finally {
+  //     setIsLoading(false);
+  //   }
+  // }, [user]);
+
+  useEffect(() => {
+    if (!db || !user) {
+        setProfile(createMockProfile());
         setIsLoading(false);
         return;
-      }
-
-      const profileDoc = await getDoc(doc(db, 'users', user.uid));
-      if (profileDoc.exists()) {
-        setProfile(profileDoc.data() as UserProfile);
+    }
+    
+    const userRef = doc(db, 'users', user.uid);
+    
+    const unsubscribe = onSnapshot(userRef, (docSnapshot) => {
+      if (docSnapshot.exists()) {
+        setProfile(docSnapshot.data() as UserProfile);
       } else {
         setProfile(createMockProfile());
       }
-    } catch (error) {
-      console.warn('Using mock profile due to error:', error);
+      setIsLoading(false); 
+    }, (error) => {
+      console.error("Error fetching real-time profile:", error);
       setProfile(createMockProfile());
-    } finally {
       setIsLoading(false);
+    });
+
+    return () => unsubscribe();
+    
+  }, [user, db]);
+
+  const navigateToFriendsList = () => {
+    const friendUids = Array.isArray(profile?.friends) ? profile.friends : [];
+    
+    if (friendUids.length === 0) {
+      Alert.alert("No Friends Yet", "You need to add friends through the Chat screen first!");
+      return;
     }
-  }, [user]);
+
+    router.push({
+      pathname: '/profile/friends',
+      params: { uids: JSON.stringify(friendUids) }
+    });
+  };
 
   // Load posts (Firestore or mock)
   const loadUserPosts = useCallback(async () => {
@@ -108,9 +139,9 @@ export default function ProfileScreen() {
       return;
     }
 
-    loadProfile();
+    // loadProfile();
     loadUserPosts();
-  }, [user, loadProfile, loadUserPosts]);
+  }, [user, loadUserPosts]);
 
   const renderPost = ({ item }: { item: UserPost }) => (
     <View style={styles.postCard}>
@@ -133,30 +164,6 @@ export default function ProfileScreen() {
           <Text style={styles.statText}>{item.comments}</Text>
         </View>
       </View>
-    </View>
-  );
-
-  const renderRecommendation = ({ item }: { item: UserRecommendation }) => (
-    <View style={styles.postCard}>
-      <Text style={styles.recommendationHeader}>
-        Recommended by **{item.recommenderName}**
-      </Text>
-      <View style={styles.bookInfo}>
-        <FontAwesome name="book" size={16} color="#0a7ea4" />
-        <Text style={styles.bookText}>
-          {item.bookTitle} by {item.bookAuthor}
-        </Text>
-      </View>
-      {item.note && (
-        <View style={styles.noteContainer}>
-          <FontAwesome name="quote-left" size={12} color="#666" style={{ marginRight: 5 }} />
-          <Text style={styles.recommendationNote}>{item.note}</Text>
-        </View>
-      )}
-      <TouchableOpacity style={styles.actionButton}>
-        <Text style={styles.actionButtonText}>View Details</Text>
-        <FontAwesome name="chevron-right" size={12} color="#fff" />
-      </TouchableOpacity>
     </View>
   );
 
@@ -191,6 +198,7 @@ export default function ProfileScreen() {
       <ScrollView style={styles.scrollView}>
         <View style={styles.header}>
           <Text style={styles.title}>Profile</Text>
+          <View style={{ flexDirection: 'row', gap: 50 }}></View>
           <TouchableOpacity onPress={() => router.push('/profile/edit')}>
             <FontAwesome name="cog" size={24} color="#666" />
           </TouchableOpacity>
@@ -212,10 +220,22 @@ export default function ProfileScreen() {
               <Text style={styles.statNumber}>{userPosts?.length || 0}</Text>
               <Text style={styles.statLabel}>Posts</Text>
             </View>
-            <View style={styles.statItem}>
+            {/* <View style={styles.statItem}>
               <Text style={styles.statNumber}>{profile?.friends || 0}</Text>
               <Text style={styles.statLabel}>Friends</Text>
-            </View>
+            </View> */}
+            <TouchableOpacity 
+              style={styles.statItem} 
+              onPress={navigateToFriendsList}
+            >
+            <Text style={styles.statNumber}>
+              {Array.isArray(profile?.friends) 
+              ? profile.friends.length 
+              : (typeof profile?.friends === 'number' ? profile.friends : 0)
+              }
+            </Text>              
+            <Text style={styles.statLabel}>Friends</Text>
+            </TouchableOpacity>
           </View>
 
           {profile?.favoriteGenres && profile.favoriteGenres.length > 0 && (
@@ -239,12 +259,6 @@ export default function ProfileScreen() {
           >
             <Text style={[styles.tabText, activeTab === 'books' && styles.activeTabText]}>Books</Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'recommendation' && styles.activeTab]}
-            onPress={() => setActiveTab('recommendation')}
-          >
-            <Text style={[styles.tabText, activeTab === 'recommendation' && styles.activeTabText]}>Recommendation</Text>
-          </TouchableOpacity>
         </View>
 
         {activeTab === 'posts' && (
@@ -254,21 +268,6 @@ export default function ProfileScreen() {
             keyExtractor={(item) => item.id}
             scrollEnabled={false}
             contentContainerStyle={styles.postsList}
-          />
-        )}
-
-        {activeTab === 'recommendation' && (
-          <FlatList
-            data={userRecommendations}
-            renderItem={renderRecommendation}
-            keyExtractor={(item) => item.id}
-            scrollEnabled={false}
-            contentContainerStyle={styles.postsList} // Re-using existing style
-            ListEmptyComponent={() => (
-              <View style={styles.emptyList}>
-                <Text style={styles.emptyText}>No book recommendation yet. Share your profile with friends!</Text>
-              </View>
-            )}
           />
         )}
 
@@ -462,16 +461,6 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 24,
     fontWeight: 'bold',
-  },
-  recommendationHeader: {
-    fontSize: 14,
-    color: '#333',
-    marginBottom: 8,
-  },
-  recommendationNote: {
-    color: '#666',
-    fontSize: 14,
-    fontStyle: 'italic',
   },
   noteContainer: {
     flexDirection: 'row',
