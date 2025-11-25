@@ -5,15 +5,15 @@ import { useAuth } from './AuthContext';
 
 interface Notification {
   id: string;
-  type: 'like' | 'comment' | 'club_invite' | 'club_update' | 'new_video';
+  type: 'like' | 'comment' | 'club_invite' | 'club_update' | 'new_video' | 'new_recommendation';
   title: string;
   message: string;
   userId: string;
   targetId?: string;
-  targetType?: 'video' | 'club' | 'comment';
+  targetType?: 'video' | 'club' | 'comment' | 'book';
   fromUserId?: string;
   fromUserDisplayName?: string;
-  fromUserPhotoURL?: string;
+  fromUserPhotoURL?: string | null;
   read: boolean;
   createdAt: any;
 }
