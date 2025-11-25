@@ -1,17 +1,24 @@
-import React, { ComponentProps, useState, useEffect, useRef } from 'react';
-import { StyleSheet, View, Dimensions, ActivityIndicator, Text, TouchableOpacity, KeyboardAvoidingView, Modal, TouchableWithoutFeedback, TextInput, Button } from 'react-native';
-import Pdf from 'react-native-pdf'; // this error is not real, ignore
+import React, { useState, useEffect, useRef } from 'react';
+import { StyleSheet, View, Dimensions, ActivityIndicator, Text, TouchableOpacity, KeyboardAvoidingView, Modal, TouchableWithoutFeedback, TextInput, Button, Platform } from 'react-native';
+import Pdf, { type PdfDocumentProps } from 'react-native-pdf'; // this error is not real, ignore
 import { updateBookPageCount } from '../utils/getBook';
 import { FontAwesome } from '@expo/vector-icons';
 import { auth } from '../config/firebase';
 
 // Comment imports
 import BookCommentsDisplay from './BookCommentsDisplay';
-import { listenForComments, addComment , Comment } from '../utils/bookComments';
+import { listenForComments, addComment , Comment , PageSentiment } from '../utils/bookComments';
 
 const CommentIcon = () => (
+  <FontAwesome name="comment" size={20} color="#8e8e93" />
+);
 
-  <FontAwesome name="comment" size={20} color="#666" />
+const NightModeToggleIcon = ({ active }: { active: boolean }) => (
+  <FontAwesome 
+    name={active ? "moon-o" : "sun-o"} 
+    size={24} 
+    color={active ? "#FFD700" : "#8e8e93"} 
+  />
 );
 
 type PdfSource = ComponentProps<typeof Pdf>['source'];
@@ -20,9 +27,11 @@ interface PdfViewerProps {
   source: PdfSource;
   bookId: string;
   onPageChanged?: (page: number, totalPages: number) => void;
+  isNightMode: boolean; 
+  setIsNightMode: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
-export default function PdfViewer({ source, bookId, onPageChanged }: PdfViewerProps) {
+export default function PdfViewer({ source, bookId, onPageChanged, isNightMode, setIsNightMode }: PdfViewerProps) {
   // Page stuff
   const [totalPages, setTotalPages] = useState<number>(0);
   const [currentPage, setCurrentPage] = useState<number>(1);
@@ -33,16 +42,19 @@ export default function PdfViewer({ source, bookId, onPageChanged }: PdfViewerPr
   const [isCommentSectionVisible, setIsCommentSectionVisible] = useState(false);
   const [newComment, setNewComment] = useState('');
   const textInputRef = useRef<TextInput>(null);
+  const [isSpoiler, setIsSpoiler] = useState(false);
   
   // User stuff
-  const currentUserId = auth?.currentUser?.uid || 'anonymous_user';
+  const currentUserId = auth.currentUser?.uid || 'anonymous_user';
+  const [pageSentiment, setPageSentiment] = useState<PageSentiment>('Neutral');
   
   useEffect(() => {
     if (!bookId || !currentPage) return;
 
     // Start listening for comments on the current page of the current book
-    const unsubscribe = listenForComments(bookId, currentPage, (newComments) => {
+    const unsubscribe = listenForComments(bookId, currentPage, (newComments, newPageSentiment) => {
       setComments(newComments);
+      setPageSentiment(newPageSentiment);
     });
 
     // Stops listening for comments when the page or book changes
@@ -52,8 +64,9 @@ export default function PdfViewer({ source, bookId, onPageChanged }: PdfViewerPr
   const handlePostComment = (textFromInput?: string) => {
     const commentText = textFromInput ?? newComment;
     if (commentText.trim() === '') { return; }
-    addComment(bookId, currentPage, commentText, currentUserId); 
+    addComment(bookId, currentPage, commentText, currentUserId, isSpoiler); 
     setNewComment(''); 
+    setIsSpoiler(false);
     textInputRef.current?.blur(); 
   };
 
@@ -90,7 +103,7 @@ export default function PdfViewer({ source, bookId, onPageChanged }: PdfViewerPr
             console.log(error);
             setIsLoading(false);
           }}
-          style={styles.pdf}
+          style={[styles.pdf, isNightMode && styles.pdfNight]}
         />
 
         {/* Loading screen */}
@@ -99,6 +112,10 @@ export default function PdfViewer({ source, bookId, onPageChanged }: PdfViewerPr
             <ActivityIndicator size="large" />
           </View>
         )}
+        {/* Night mode dimmer */}
+        {isNightMode && (
+          <View style={styles.nightModeDimmer} pointerEvents="none" />
+        )}
         {/* Page count */}
         {!isLoading && (
           <View style={styles.pageCountContainer}>
@@ -106,6 +123,15 @@ export default function PdfViewer({ source, bookId, onPageChanged }: PdfViewerPr
               Page {currentPage} of {totalPages}
             </Text>
           </View>
+        )}
+        {/* Night mode toggle */}
+        {!isLoading && (
+          <TouchableOpacity 
+            style={styles.nightModeToggle} 
+            onPress={() => setIsNightMode(!isNightMode)}
+          >
+            <NightModeToggleIcon active={isNightMode} />
+          </TouchableOpacity>
         )}
       </View>
         {!isLoading && (
@@ -125,6 +151,11 @@ export default function PdfViewer({ source, bookId, onPageChanged }: PdfViewerPr
             onChangeText={setNewComment}
             multiline={true}
           />
+
+          <TouchableOpacity style={styles.spoilerToggle} onPress={() => setIsSpoiler(!isSpoiler)}>
+            <FontAwesome name={isSpoiler ? 'eye-slash' : 'eye'} size={20} color={isSpoiler ? '#007AFF' : '#8e8e93'} />
+          </TouchableOpacity>
+
           <Button title="Post" onPress={() => handlePostComment()} disabled={!newComment.trim()} />
         </View>
         )}
@@ -144,15 +175,19 @@ export default function PdfViewer({ source, bookId, onPageChanged }: PdfViewerPr
         >
           {/* Comments */}
           <TouchableWithoutFeedback>
-            <View style={styles.modalContentContainer}>
+            <View style={[styles.modalContentContainer, isNightMode && styles.modalNight]}>
               <BookCommentsDisplay
                 bookId={bookId}
-                currentUserId={currentUserId} // CHANGE LATER
+                currentUserId={currentUserId} 
                 comments={comments}
                 onPostComment={handlePostComment}
                 onClose={() => setIsCommentSectionVisible(false)}
                 commentInputValue={newComment}
                 onCommentInputChange={setNewComment}
+                pageSentiment={pageSentiment}
+                isSpoiler={isSpoiler}
+                setIsSpoiler={setIsSpoiler}
+                isNightMode={isNightMode} 
               />
             </View>
           </TouchableWithoutFeedback>
@@ -172,6 +207,27 @@ const styles = StyleSheet.create({
   pdf: {
     flex: 1,
     width: Dimensions.get('window').width,
+    backgroundColor: '#fff', 
+  },
+  pdfNight: {
+    backgroundColor: '#121212', 
+  },
+  nightModeDimmer: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.4)', 
+    zIndex: 1, 
+  },
+  nightModeToggle: {
+    position: 'absolute',
+    top: 20,
+    right: 20,
+    padding: 8,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    borderRadius: 20,
+    zIndex: 2, 
+  },
+  modalNight: {
+    backgroundColor: '#1c1c1e',
   },
   loaderOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -247,5 +303,10 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     overflow: 'hidden',
+    backgroundColor: '#1c1c1e'
+  },
+  spoilerToggle: {
+    padding: 8,
+    marginRight: 8,
   },
 });

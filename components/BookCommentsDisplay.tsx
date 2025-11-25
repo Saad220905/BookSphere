@@ -1,20 +1,38 @@
 import { FontAwesome } from '@expo/vector-icons';
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, TextInput, Button, ScrollView, Platform, TouchableOpacity, KeyboardAvoidingView, Image } from 'react-native';
-import { Comment, toggleLike } from '../utils/bookComments';
+import { StyleSheet, View, Text, TextInput, Button, ScrollView, Platform, TouchableOpacity, KeyboardAvoidingView, Image, Alert } from 'react-native';
+import { Comment, toggleLike, deleteComment  } from '../utils/bookComments';
 import { UserProfile, getUserProfile } from '../utils/userProfile';
 
 interface CommentSectionProps {
   bookId: string;
   currentUserId: string;
   comments: Comment[];
-  onPostComment: (commentText: string) => void;
+  //New prop for overall page sentiment
+  pageSentiment: 'Positive' | 'Negative' | 'Neutral' | 'Mixed';
+  onPostComment: (commentText: string,  isSpoiler: boolean) => void;
   onClose: () => void;
   commentInputValue: string;
   onCommentInputChange: (text: string) => void;
+  isSpoiler: boolean;
+  setIsSpoiler: (value: boolean) => void;
 }
 
-// --- NEW HELPER FUNCTION ---
+// --- NEW HELPER FOR PAGE SENTIMENT DISPLAY ---
+const getPageSentimentDisplay = (pageSentiment: CommentSectionProps['pageSentiment']) => {
+  switch (pageSentiment) {
+    case 'Positive':
+      return { text: 'Overall Positive', color: '#00cc00', emoji: '🌟' };
+    case 'Negative':
+      return { text: 'Overall Negative', color: '#ff3b30', emoji: '⛈️' };
+    case 'Neutral':
+      return { text: 'Overall Neutral', color: '#ffcc00', emoji: '☁️' };
+    case 'Mixed':
+      return { text: 'Mixed Feelings', color: '#8e8e93', emoji: '⚖️' };
+  }
+};
+
+// --- HELPER FUNCTION ---
 const getSentimentDisplay = (sentiment: Comment['sentiment']) => {
   switch (sentiment) {
     case 'Positive':
@@ -46,6 +64,7 @@ const HeartIcon = ({ liked }: { liked: boolean }) => (
 
 const CommentItem = ({ comment, bookId, currentUserId }: { comment: Comment, bookId: string, currentUserId: string }) => {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [showSpoiler, setShowSpoiler] = useState(false);
 
   useEffect(() => {
     // Fetch the profile for this userId
@@ -67,6 +86,28 @@ const CommentItem = ({ comment, bookId, currentUserId }: { comment: Comment, boo
   const displayName = userProfile?.displayName || (comment.userId === 'anonymous_user' ? 'Anonymous' : '...');
   // Use user's photoURL OR fallback to UI-AVATARS
   const photoURL =  { uri: `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}` };
+  const isOwner = currentUserId === comment.userId;
+  
+  const handleDelete = () => {
+    Alert.alert(
+      "Delete Comment",
+      "Are you sure you want to permanently delete this comment?",
+      [
+        { text: "Cancel", style: "cancel" },
+        { 
+          text: "Delete", 
+          style: "destructive", 
+          onPress: () => {
+            deleteComment(bookId, comment.id)
+              .catch(err => {
+                console.error("Failed to delete comment:", err);
+                Alert.alert("Error", "Could not delete comment.");
+              });
+          } 
+        }
+      ]
+    );
+  };
 
   return (
     <View style={styles.commentItemContainer}>
@@ -77,40 +118,77 @@ const CommentItem = ({ comment, bookId, currentUserId }: { comment: Comment, boo
         <View style={styles.userLine}>
           {/* --- USE 'displayName' --- */}
           <Text style={styles.commentUser}>{displayName}</Text>
-          <Text style={[styles.sentimentText, { color: color }]}>{emoji}</Text>
+          {(!comment.isSpoiler || showSpoiler) && (
+            <Text style={[styles.sentimentText, { color: color }]}>{emoji}</Text>
+          )}
         </View>
-        <Text style={styles.commentText}>{comment.text}</Text>
-      </View>
-      {/* Right side: like button and like count */}
-      <TouchableOpacity
-        onPress={() => toggleLike(bookId, comment.id, currentUserId)}
-        style={styles.likeButtonContainer}
-      >
-        <HeartIcon liked={isLikedByUser} />
-        {comment.likeCount > 0 && (
-          <Text style={styles.likeCount}>{comment.likeCount}</Text>
+        {comment.isSpoiler && !showSpoiler ? (
+          <TouchableOpacity onPress={() => setShowSpoiler(true)} style={styles.spoilerButton}>
+            <FontAwesome name="eye-slash" size={14} color="#8e8e93" />
+            <Text style={styles.spoilerButtonText}>Show Spoiler</Text>
+          </TouchableOpacity>
+        ) : (
+          <Text style={styles.commentText}>{comment.text}</Text>
         )}
-      </TouchableOpacity>
+      </View>
+      
+      {/* Right side: delete + like button and like count */}
+      <View style={styles.rightColumnContainer}>
+        <TouchableOpacity
+          onPress={() => toggleLike(bookId, comment.id, currentUserId)}
+          style={styles.likeButtonContainer}
+        >
+          <HeartIcon liked={isLikedByUser} />
+          {comment.likeCount > 0 && (
+            <Text style={styles.likeCount}>{comment.likeCount}</Text>
+          )}
+        </TouchableOpacity>
+        {isOwner && (
+          <TouchableOpacity onPress={handleDelete} style={styles.deleteButton}>
+            <FontAwesome name="trash-o" size={15} color="#8e8e93" />
+          </TouchableOpacity>
+        )}
+      </View>
     </View>
   );
 };
 
-export default function BookCommentsDisplay({ bookId, currentUserId, comments, onPostComment, onClose, commentInputValue, onCommentInputChange }: CommentSectionProps) {
+// ---------------------------------------------------------------------------------------
+// MAIN COMPONENT EXPORT
+// ---------------------------------------------------------------------------------------
+export default function BookCommentsDisplay({ 
+    bookId, 
+    currentUserId, 
+    comments, 
+    onPostComment, 
+    onClose, 
+    commentInputValue, 
+    onCommentInputChange, 
+    pageSentiment,
+    isSpoiler,
+    setIsSpoiler
+}: CommentSectionProps) {
+    //Call the helper function here to declare the variables before the return statement.
+    const { text, color, emoji } = getPageSentimentDisplay(pageSentiment);
 
   const handlePost = () => {
     if (commentInputValue.trim() === '') return;
-    onPostComment(commentInputValue);
+    onPostComment(commentInputValue, isSpoiler);
   };
 
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       style={styles.modalContainer}
-      keyboardVerticalOffset={10}
     >
       {/* Comment section header */}
       <View style={styles.header}>
         <View style={{width: 24}} /> 
+        {/* display the Overall Page Sentiment */}
+          <View style={styles.pageSentimentContainer}>
+            {/* variables (color, emoji, text) correctly defined */}
+            <Text style={[styles.pageSentimentText, {color: color}]}>{emoji} {text}</Text>
+          </View>
         <Text style={styles.headerTitle}>Comments</Text>
         <TouchableOpacity onPress={onClose} style={styles.closeButton}>
           <DownArrowIcon />
@@ -143,6 +221,12 @@ export default function BookCommentsDisplay({ bookId, currentUserId, comments, o
           onChangeText={onCommentInputChange}
         />
         <Button title="Post" onPress={handlePost} disabled={!commentInputValue.trim()} />
+      </View>
+      <View style={styles.spoilerToggleContainer}>
+        <TouchableOpacity style={styles.spoilerToggle} onPress={() => setIsSpoiler(!isSpoiler)}>
+          <FontAwesome name={isSpoiler ? 'check-square-o' : 'square-o'} size={20} color={isSpoiler ? '#007AFF' : '#8e8e93'} />
+          <Text style={styles.spoilerToggleText}>Mark as Spoiler</Text>
+        </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
   );
@@ -182,8 +266,22 @@ const styles = StyleSheet.create({
     padding: 15,
     borderBottomWidth: 1,
     borderBottomColor: '#3a3a3c',
-    alignItems: 'flex-start',
   },
+  pageSentimentContainer: {
+    position: 'absolute', // Position this absolutely so it doesn't push the title
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'flex-start', // Align to the left side
+    paddingLeft: 15,
+},//overall page sentiment
+  pageSentimentText: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#fff',
+},
   commentContent: { 
     flex: 1, 
     marginRight: 15 
@@ -219,8 +317,8 @@ const styles = StyleSheet.create({
   },
   likeCount: { 
     color: '#8e8e93', 
-    fontSize: 12, 
-    marginTop: 4 
+    fontSize: 10, 
+    marginTop: -2 
   },
   commentInputContainer: {
     flexDirection: 'row',
@@ -247,4 +345,44 @@ const styles = StyleSheet.create({
     marginRight: 10,
     backgroundColor: '#3a3a3c', 
   },
+  spoilerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#3a3a3c',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 8,
+    alignSelf: 'flex-start', 
+  },
+  spoilerButtonText: {
+    color: '#8e8e93',
+    marginLeft: 8,
+    fontWeight: 'bold',
+    fontSize: 14,
+  },
+  spoilerToggleContainer: {
+    paddingHorizontal: 15,
+    paddingBottom: 10, 
+    paddingTop: 5,
+    backgroundColor: '#1c1c1e', 
+    borderTopWidth: 1,
+    borderTopColor: '#3a3a3c',
+  },
+  spoilerToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  spoilerToggleText: {
+    color: '#8e8e93',
+    marginLeft: 10,
+    fontSize: 14,
+  },
+  rightColumnContainer: {
+    alignItems: 'center',
+    justifyContent: 'space-between', 
+    minHeight: 50, 
+  },
+  deleteButton: {
+    paddingTop: 4,
+  }
 });
