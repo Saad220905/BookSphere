@@ -61,28 +61,34 @@ export default function ChatMessage({
 
 const styles = StyleSheet.create({
   messageContainer: {
-    padding: 12,
+    padding: 10,
     borderRadius: 18,
-    marginBottom: 8,
-    maxWidth: '80%',
+    marginBottom: 10,
+    maxWidth: '100%',
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
       height: 1,
     },
     shadowOpacity: 0.1,
-    shadowRadius: 1,
-    elevation: 2,
+    shadowRadius: 0,
+    elevation: 8,
   },
   currentUserMessage: {
     alignSelf: 'flex-end',
-    borderBottomRightRadius: 4,
+    marginBottom: 10,
+    borderBottomRightRadius: 5,
   },
   otherUserMessage: {
     alignSelf: 'flex-start',
-    borderBottomLeftRadius: 4,
+    marginBottom: 10,
+    borderBottomLeftRadius: 5,
   },
   messageText: {
-    fontSize: 16,
+    fontSize: 15,
   },
 });
+
+
+
+
