@@ -20,6 +20,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ChatMessage from '../../components/ChatMessage';
 import { Text } from '../../components/Themed';
+import UserAvatar from '../../components/UserAvatar';
 import { db } from '../../config/firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import {
@@ -36,21 +37,35 @@ import {
   Timestamp,
   where,
   deleteDoc,
-  // --- ADDED/HIGHLIGHTED TYPES FOR FIXING TS(7006) ERRORS ---
   QuerySnapshot, 
   DocumentData,
   QueryDocumentSnapshot,
 } from 'firebase/firestore';
 import { UserProfile } from '../../utils/userProfile';
 
-// --- UPDATED INTERFACE ---
+// --- CONSTANTS ---
+// Threshold for grouping messages (2 hours in milliseconds)
+const TIME_GROUP_THRESHOLD_MS = 2 * 60 * 60 * 1000; 
+
+// Width reserved for the Avatar/Padding in the row (for fragmentation fix)
+const AVATAR_WIDTH = 30;
+// Note: TIME_WIDTH is removed from the layout calculation since time is hidden
+const PADDING_WIDTH = 12;
+const { width, height } = Dimensions.get('window');
+const MAX_BUBBLE_WIDTH = width * 0.75; // Safer general max width
+
+// --- INTERFACES ---
 interface BookRecommendation {
   title: string;
   author: string;
-  rating: number; // New field for book rating (e.g., 4.5)
-  availability: string; // New field for where to get it (e.g., "Free to read", "Amazon, B&N")
+  rating: number; 
+  availability: string;
 }
-// --- END UPDATED INTERFACE ---
+
+interface AiRecommendationResponse {
+    mood: string;
+    recommendations: BookRecommendation[];
+}
 
 interface Message {
   id: string;
@@ -58,6 +73,7 @@ interface Message {
   senderId: string;
   createdAt: Timestamp | null;
 }
+// --- END INTERFACES ---
 
 const Colors = {
   background: '#ffffffff',
@@ -69,34 +85,61 @@ const Colors = {
   bubbleLight: '#e4e5f2ff',
 };
 
-const { height } = Dimensions.get('window');
+// --- UTILITY FUNCTIONS ---
+const isSameDay = (t1: Date | null, t2: Date | null): boolean => {
+  if (!t1 || !t2) return false;
+  return t1.getFullYear() === t2.getFullYear() &&
+         t1.getMonth() === t2.getMonth() &&
+         t1.getDate() === t2.getDate();
+};
+
+const formatChatDate = (date: Date | null): string => {
+  if (!date) return '';
+  const now = new Date();
+  
+  if (isSameDay(date, now)) {
+    return 'Today';
+  } else if (isSameDay(date, new Date(now.setDate(now.getDate() - 1)))) {
+    return 'Yesterday';
+  } else {
+    return date.toLocaleDateString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  }
+};
+
+// Removed formatChatTime as timestamps are no longer displayed
 
 export default function PrivateChatScreen() {
   const router = useRouter();
   const { id: otherUserId, otherUserName } = useLocalSearchParams<{ id: string; otherUserName?: string }>();
   const { user } = useAuth();
   const [otherUser, setOtherUser] = useState<UserProfile | null>(null);
+  const [currentUserProfile, setCurrentUserProfile] = useState<UserProfile | null>(null); 
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
-  const [apiLoading, setApiLoading] = useState(false);
+  const [apiLoading, setLoadingApi] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
-  const [recommendations, setRecommendations] = useState<BookRecommendation[]>([]);
+  
+  const [aiResponse, setAiResponse] = useState<AiRecommendationResponse | null>(null);
   const [isInputFocused, setIsInputFocused] = useState(false);
+  
+  // visibleTimeMessageId state and handler removed as requested
 
   const flatListRef = useRef<FlatList>(null);
   const firestoreDb = db as Firestore;
 
-  // Animation refs
+  // Animation refs 
   const aiButtonScale = useRef(new Animated.Value(1)).current;
   const sendButtonScale = useRef(new Animated.Value(1)).current;
   const inputBorderAnim = useRef(new Animated.Value(0)).current;
   const modalAnim = useRef(new Animated.Value(0)).current;
   const backdropAnim = useRef(new Animated.Value(0)).current;
   const scrollY = useRef(new Animated.Value(0)).current;
-
-  // Store animation values for each message
   const messageAnimValues = useRef<Map<string, Animated.Value>>(new Map());
 
   const getConversationId = (uid1: string | undefined, uid2: string | undefined) => {
@@ -105,71 +148,7 @@ export default function PrivateChatScreen() {
   };
 
   const conversationId = getConversationId(user?.uid, otherUserId);
-
-  // Pulse AI button
-  useEffect(() => {
-    const pulse = Animated.loop(
-      Animated.sequence([
-        Animated.timing(aiButtonScale, {
-          toValue: 1.12,
-          duration: 1000,
-          easing: Easing.out(Easing.ease),
-          useNativeDriver: true,
-        }),
-        Animated.timing(aiButtonScale, {
-          toValue: 1,
-          duration: 1000,
-          easing: Easing.in(Easing.ease),
-          useNativeDriver: true,
-        }),
-      ])
-    );
-    pulse.start();
-    return () => pulse.stop();
-  }, [aiButtonScale]);
-
-  // Send button pulse
-  useEffect(() => {
-    if (newMessage.trim()) {
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(sendButtonScale, {
-            toValue: 1.15,
-            duration: 400,
-            useNativeDriver: true,
-          }),
-          Animated.timing(sendButtonScale, {
-            toValue: 1,
-            duration: 400,
-            useNativeDriver: true,
-          }),
-        ])
-      ).start();
-    } else {
-      sendButtonScale.setValue(1);
-    }
-  }, [newMessage, sendButtonScale]);
-
-  // Input glow
-  useEffect(() => {
-    Animated.timing(inputBorderAnim, {
-      toValue: isInputFocused ? 1 : 0,
-      duration: 300,
-      useNativeDriver: false,
-    }).start();
-  }, [isInputFocused, inputBorderAnim]);
-
-  const inputBorderColor = inputBorderAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [Colors.inputBorder, Colors.primaryBlue],
-  });
-
-  const inputShadowOpacity = inputBorderAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, 0.3],
-  });
-
-  // Modal animations
+  
   const openModal = () => {
     setModalVisible(true);
     Animated.parallel([
@@ -201,7 +180,70 @@ export default function PrivateChatScreen() {
     ]).start(() => setModalVisible(false));
   };
 
-  // Scroll handler
+
+  // Pulse AI button (unchanged logic)
+  useEffect(() => {
+    const pulse = Animated.loop(
+      Animated.sequence([
+        Animated.timing(aiButtonScale, {
+          toValue: 1.12,
+          duration: 1000,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(aiButtonScale, {
+          toValue: 1,
+          duration: 1000,
+          easing: Easing.in(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    pulse.start();
+    return () => pulse.stop();
+  }, [aiButtonScale]);
+
+  // Send button pulse (unchanged logic)
+  useEffect(() => {
+    if (newMessage.trim()) {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(sendButtonScale, {
+            toValue: 1.15,
+            duration: 400,
+            useNativeDriver: true,
+          }),
+          Animated.timing(sendButtonScale, {
+            toValue: 1,
+            duration: 400,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+    } else {
+      sendButtonScale.setValue(1);
+    }
+  }, [newMessage, sendButtonScale]);
+
+  // Input glow (unchanged logic)
+  useEffect(() => {
+    Animated.timing(inputBorderAnim, {
+      toValue: isInputFocused ? 1 : 0,
+      duration: 300,
+      useNativeDriver: false,
+    }).start();
+  }, [isInputFocused, inputBorderAnim]);
+
+  const inputBorderColor = inputBorderAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [Colors.inputBorder, Colors.primaryBlue],
+  });
+
+  const inputShadowOpacity = inputBorderAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 0.3],
+  });
+
   const handleScroll = Animated.event(
     [{ nativeEvent: { contentOffset: { y: scrollY } } }],
     { useNativeDriver: false }
@@ -223,23 +265,30 @@ export default function PrivateChatScreen() {
     flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
   };
 
-  // Fetch other user
+  // Fetch user profiles
   useEffect(() => {
-    const fetchOtherUser = async () => {
-      if (!firestoreDb || !otherUserId) return;
+    const fetchUsers = async () => {
+      if (!firestoreDb || !otherUserId || !user?.uid) return;
+      
       try {
-        const userDoc = await getDoc(doc(firestoreDb, 'users', otherUserId));
-        if (userDoc.exists()) {
-          setOtherUser(userDoc.data() as UserProfile);
+        // Fetch Other User
+        const otherUserDoc = await getDoc(doc(firestoreDb, 'users', otherUserId));
+        if (otherUserDoc.exists()) {
+          setOtherUser(otherUserDoc.data() as UserProfile);
+        }
+        
+        // Fetch Current User Profile
+        const currentUserDoc = await getDoc(doc(firestoreDb, 'users', user.uid));
+        if (currentUserDoc.exists()) {
+          setCurrentUserProfile(currentUserDoc.data() as UserProfile);
         }
       } catch (error) {
-        console.error('Error fetching other user:', error);
+        console.error('Error fetching user profiles:', error);
       }
     };
-    fetchOtherUser();
-  }, [otherUserId, firestoreDb]);
+    fetchUsers();
+  }, [otherUserId, user?.uid, firestoreDb]);
 
-  // Listen to messages and animate new ones
   useEffect(() => {
     if (!firestoreDb || !conversationId) {
       setMessages([]);
@@ -253,17 +302,14 @@ export default function PrivateChatScreen() {
 
     const unsubscribe = onSnapshot(
       q,
-      // --- FIX: Explicitly type snapshot ---
       (snapshot: QuerySnapshot<DocumentData>) => {
         const messagesList = snapshot.docs.map(
-          // --- FIX: Explicitly type doc ---
-          (doc: QueryDocumentSnapshot<DocumentData>) => ({
+          (doc: QueryDocumentSnapshot<DocumentData>) => ({ 
             id: doc.id,
             ...doc.data(),
           })
         ) as Message[];
 
-        // Animate new messages
         const newMessages = messagesList.filter(
           (msg) => !messages.some((m) => m.id === msg.id)
         );
@@ -287,7 +333,6 @@ export default function PrivateChatScreen() {
         setLoading(false);
         setTimeout(scrollToBottom, 100);
       },
-      // --- FIX: Explicitly type error ---
       (error: Error) => {
         console.error('Error fetching messages:', error);
         setLoading(false);
@@ -354,16 +399,40 @@ export default function PrivateChatScreen() {
       .join('\n');
   };
 
+  // UPDATED postAiNotificationMessage
+  const postAiNotificationMessage = async () => {
+    if (!user || !firestoreDb || !conversationId) return;
+    
+    const messagesCollection = collection(firestoreDb, 'conversations', conversationId, 'messages');
+    const senderName = currentUserProfile?.displayName || user.email?.split('@')[0] || 'User';
+    
+    // NEW improved notification text
+    const notificationText = `✨ AI Analysis in Progress: ${senderName} initiated a book recommendation request. Our system is analyzing recent chat history to find your perfect reads.`;
+
+    try {
+        await addDoc(messagesCollection, {
+            text: notificationText,
+            senderId: user.uid,
+            createdAt: serverTimestamp(),
+        });
+    } catch (error) {
+        console.error("Error posting AI notification:", error);
+    }
+  };
+
+
   const getAiRecommendations = async () => {
     if (!user || !firestoreDb || !conversationId) {
       Alert.alert('Error', 'Cannot get recommendations at this time.');
       return;
     }
+    
+    postAiNotificationMessage();
 
     openModal();
-    setApiLoading(true);
+    setLoadingApi(true);
     setApiError(null);
-    setRecommendations([]);
+    setAiResponse(null); 
 
     try {
       const oneHourAgo = Timestamp.fromMillis(Date.now() - 60 * 60 * 1000);
@@ -377,7 +446,7 @@ export default function PrivateChatScreen() {
       const snapshot = await getDocs(recentMessagesQuery);
       if (snapshot.empty) {
         setApiError('No recent messages found. Chat a bit more!');
-        setApiLoading(false);
+        setLoadingApi(false);
         return;
       }
 
@@ -392,13 +461,12 @@ export default function PrivateChatScreen() {
       const apiKey = process.env.EXPO_PUBLIC_GEMINI_API_KEY;
       if (!apiKey) {
         setApiError('Gemini API Key missing. Add it to your .env file.');
-        setApiLoading(false);
+        setLoadingApi(false);
         return;
       }
 
       const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
-      
-      // --- UPDATED SYSTEM PROMPT ---
+
       const systemPrompt = `
   You are a highly specialized AI Book Recommender for a social media app.
   Your task:
@@ -407,26 +475,33 @@ export default function PrivateChatScreen() {
   3. For each book, provide its average rating, and first try to find the free one, specify if it's currently free (e.g., public domain), and suggest a purchase point (e.g., Amazon, local bookstore).
   4. Only choose books that are: Highly rated (4.0★+), widely recommended, and easily available.
   5. Respond only with the specified JSON structure.`;
-      // ------------------------------------------
-      
-      const userPrompt = `Analyze the following private chat conversation from the last hour and recommend exactly 5 book titles. CONVERSATION:\n${conversationHistory}`;
+
+      const userPrompt = `Analyze the following private chat conversation from the last hour and determine the mood and recommend 5 book titles. CONVERSATION:\n${conversationHistory}`;
 
 
-      // --- UPDATED RESPONSE SCHEMA ---
       const schema = {
-        type: 'ARRAY',
-        items: {
-          type: 'OBJECT',
-          properties: {
-            title: { type: 'STRING' },
-            author: { type: 'STRING' },
-            rating: { type: 'NUMBER' }, // Updated to NUMBER for rating
-            availability: { type: 'STRING' }, // New property
+        type: 'OBJECT',
+        properties: {
+          mood: { 
+            type: 'STRING', 
+            description: 'The dominant emotion or mood detected in the conversation (e.g., angry, sad, bored).'
           },
-          required: ['title', 'author', 'rating', 'availability'], // Added required fields
+          recommendations: {
+            type: 'ARRAY',
+            items: {
+              type: 'OBJECT',
+              properties: {
+                title: { type: 'STRING' },
+                author: { type: 'STRING' },
+                rating: { type: 'NUMBER' },
+                availability: { type: 'STRING' },
+              },
+              required: ['title', 'author', 'rating', 'availability'],
+            },
+          }
         },
+        required: ['mood', 'recommendations'],
       };
-      // --- END UPDATED RESPONSE SCHEMA ---
 
       const payload = {
         contents: [{ parts: [{ text: userPrompt }] }],
@@ -447,20 +522,71 @@ export default function PrivateChatScreen() {
       const jsonText = result.candidates?.[0]?.content?.parts?.[0]?.text;
       if (!jsonText) throw new Error('Invalid response');
       const parsedJson = JSON.parse(jsonText);
-      setRecommendations(parsedJson);
+      setAiResponse(parsedJson);
     } catch (error: any) {
       console.error(error);
       setApiError(error.message || 'Failed to get recommendations');
     } finally {
-      setApiLoading(false);
+      setLoadingApi(false);
+    }
+  };
+  
+  // Compiles and sends the formatted recommendation list
+  const handleSendRecommendation = async () => {
+    if (!aiResponse || !user || !firestoreDb || !conversationId) return;
+
+    // 1. Compile the list of recommendations
+    const bookList = aiResponse.recommendations.map(book => {
+        return `* "${book.title}" by ${book.author} (${book.rating.toFixed(1)}★, ${book.availability})`;
+    }).join('\n');
+
+    // 2. Format the introductory message
+    const introName = otherUser?.displayName || otherUserName || 'friend';
+    const capitalizedMood = aiResponse.mood.charAt(0).toUpperCase() + aiResponse.mood.slice(1);
+    
+    const header = `Hey ${introName}, I think you should read these books according to your mood (${capitalizedMood}):\n\n`;
+    const fullText = header + bookList;
+    
+    const messagesCollection = collection(firestoreDb, 'conversations', conversationId, 'messages');
+
+    try {
+        await addDoc(messagesCollection, {
+            text: fullText,
+            senderId: user.uid,
+            createdAt: serverTimestamp(),
+        });
+        
+        closeModal();
+        Alert.alert("Sent!", "Book recommendations have been shared in the chat.");
+    } catch (error) {
+        console.error("Error sending compiled message:", error);
+        Alert.alert("Error", "Could not send recommendation message.");
     }
   };
 
-  // SAFE renderMessage — NO useEffect inside
-  const renderMessage = useCallback(({ item }: { item: Message }) => {
+
+  // --- MODIFIED renderMessage: Time removed, Avatar (Friend Only) remains, Grouping remains ---
+  const renderMessage = useCallback(({ item, index }: { item: Message, index: number }) => {
     const isCurrentUser = item.senderId === user?.uid;
     const anim = messageAnimValues.current.get(item.id) || new Animated.Value(1);
-
+    
+    const currentMessageDate = item.createdAt?.toDate() || null;
+    const nextItem = messages[index + 1];
+    const previousMessageDate = nextItem?.createdAt?.toDate() || null;
+    
+    // Logic for showing Date Header only on initial message or time gap > 2 hours.
+    let showDateHeader = index === messages.length - 1; 
+    if (currentMessageDate && previousMessageDate) {
+        const timeDiff = currentMessageDate.getTime() - previousMessageDate.getTime();
+        if (!isSameDay(currentMessageDate, previousMessageDate) || timeDiff > TIME_GROUP_THRESHOLD_MS) {
+            showDateHeader = true;
+        }
+    }
+    
+    const photoURL = otherUser?.photoURL;
+    const fallbackName = 'User';
+    const displayName = otherUser?.displayName ?? fallbackName; 
+    
     const animatedStyle = {
       opacity: anim,
       transform: [
@@ -473,22 +599,68 @@ export default function PrivateChatScreen() {
       ],
     };
 
+    // --- Message Row Layout ---
     return (
       <Animated.View style={animatedStyle}>
-        <ChatMessage
-          message={item}
-          isCurrentUser={isCurrentUser}
-          currentUserBubbleColor={Colors.primaryBlue}
-          currentUserTextColor={Colors.textLight}
-          otherUserBubbleColor={Colors.bubbleLight}
-          otherUserTextColor={Colors.textDark}
-          onUnsend={handleUnsend}
-        />
+        {/* Date Header */}
+        {showDateHeader && (
+          <View style={styles.dateHeaderContainer}>
+            <Text style={styles.dateHeaderText}>{formatChatDate(currentMessageDate)}</Text>
+          </View>
+        )}
+
+        {/* Current User Row: [Bubble] (No Avatar, No Time) */}
+        {isCurrentUser && (
+            <View style={[styles.messageRow, styles.currentUserRow]}>
+                {/* Bubble Container (Takes up required width based on content) */}
+                <View style={styles.messageBubbleContainer}> 
+                  <ChatMessage
+                      message={item}
+                      isCurrentUser={isCurrentUser}
+                      currentUserBubbleColor={Colors.primaryBlue}
+                      currentUserTextColor={Colors.textLight}
+                      otherUserBubbleColor={Colors.bubbleLight}
+                      otherUserTextColor={Colors.textDark}
+                      onUnsend={handleUnsend}
+                  />
+                </View>
+            </View>
+        )}
+
+        {/* Other User Row: [Avatar, Bubble] (Avatar on left, No Time) */}
+        {!isCurrentUser && (
+            <View style={[styles.messageRow, styles.otherUserRow]}>
+                
+                {/* Avatar (Left side for Other User) */}
+                <View style={styles.avatarWrapperLeft}>
+                    <UserAvatar 
+                        photoUrl={photoURL} 
+                        displayName={displayName} 
+                        size={30} 
+                    />
+                </View>
+
+                {/* Bubble Container (Takes up required width based on content) */}
+                <View style={styles.messageBubbleContainer}>
+                  <ChatMessage
+                      message={item}
+                      isCurrentUser={isCurrentUser}
+                      currentUserBubbleColor={Colors.primaryBlue}
+                      currentUserTextColor={Colors.textLight}
+                      otherUserBubbleColor={Colors.bubbleLight}
+                      otherUserTextColor={Colors.textDark}
+                      onUnsend={handleUnsend}
+                  />
+                </View>
+            </View>
+        )}
       </Animated.View>
     );
-  }, [user?.uid]);
+  }, [user?.uid, messages, otherUser]);
+  // --- END MODIFIED renderMessage ---
 
-  // --- UPDATED COMPONENT RENDER (within the Modal FlatList) ---
+
+  // --- AI Recommendation Modal Render ---
   const renderRecommendationItem = ({ item }: { item: BookRecommendation }) => (
     <View style={styles.recItem}>
       <FontAwesome name="book" size={20} color={Colors.primaryBlue} style={{ alignSelf: 'flex-start' }} />
@@ -503,7 +675,7 @@ export default function PrivateChatScreen() {
       </View>
     </View>
   );
-  // --- END UPDATED COMPONENT RENDER ---
+  // --- END AI Recommendation Modal Render ---
 
   return (
     <SafeAreaView style={styles.container}>
@@ -535,7 +707,7 @@ export default function PrivateChatScreen() {
           <FlatList
             ref={flatListRef}
             data={messages}
-            renderItem={renderMessage}
+            renderItem={({ item, index }) => renderMessage({ item, index })}
             keyExtractor={(item) => item.id}
             contentContainerStyle={styles.messagesContainer}
             inverted
@@ -628,14 +800,33 @@ export default function PrivateChatScreen() {
                   <Text style={styles.modalErrorText}>{apiError}</Text>
                 </View>
               ) : (
+                <>
+                {/* Display Mood if available */}
+                {aiResponse?.mood && (
+                    <View style={styles.moodContainer}>
+                        <Text style={styles.moodLabel}>Detected Mood:</Text>
+                        <Text style={styles.moodText}>{aiResponse.mood.toUpperCase()}</Text>
+                    </View>
+                )}
+                
                 <FlatList
-                  data={recommendations}
+                  data={aiResponse?.recommendations || []}
                   keyExtractor={(item, index) => `${item.title}-${index}`}
-                  // --- UPDATED RENDER ITEM CALL ---
                   renderItem={renderRecommendationItem}
-                  // --- END UPDATED RENDER ITEM CALL ---
                   ItemSeparatorComponent={() => <View style={styles.recSeparator} />}
                 />
+
+                {/* Send Recommendation Button */}
+                {(aiResponse?.recommendations?.length ?? 0) > 0 && (
+                    <TouchableOpacity 
+                        style={styles.sendRecButton} 
+                        onPress={handleSendRecommendation}
+                    >
+                        <FontAwesome name="share" size={18} color={Colors.textLight} />
+                        <Text style={styles.sendRecButtonText}>Send Book Reco to {otherUser?.displayName || 'Friend'}</Text>
+                    </TouchableOpacity>
+                )}
+                </>
               )}
             </View>
 
@@ -649,6 +840,7 @@ export default function PrivateChatScreen() {
   );
 }
 
+// --- MODIFIED STYLES ---
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -693,6 +885,46 @@ const styles = StyleSheet.create({
   loadingText: { marginTop: 12, color: Colors.primaryBlue, fontSize: 16 },
   messagesContainer: { padding: 16, paddingBottom: 24, flexGrow: 1 },
   emptyText: { textAlign: 'center', marginTop: 20, fontSize: 16, color: '#868484ff' },
+
+  // --- MESSAGE RENDERING STYLES ---
+  messageRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    marginBottom: 8,
+  },
+  currentUserRow: {
+    alignSelf: 'flex-end',
+    justifyContent: 'flex-end', 
+  },
+  otherUserRow: {
+    alignSelf: 'flex-start',
+  },
+  messageBubbleContainer: {
+    flexShrink: 1, 
+    maxWidth: width - AVATAR_WIDTH - PADDING_WIDTH * 2, 
+  },
+  // Removed timeText styles
+
+  avatarWrapperLeft: {
+    marginRight: 6,
+    width: AVATAR_WIDTH, 
+    justifyContent: 'flex-end',
+  },
+  dateHeaderContainer: {
+    alignItems: 'center',
+    marginVertical: 10,
+  },
+  dateHeaderText: {
+    fontSize: 12,
+    color: '#888',
+    backgroundColor: '#e0e0e0',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+    fontWeight: '500',
+  },
+  // --- END MESSAGE RENDERING STYLES ---
+
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -784,6 +1016,46 @@ const styles = StyleSheet.create({
   centerContent: { justifyContent: 'center', alignItems: 'center', minHeight: 120 },
   modalStatusText: { textAlign: 'center', fontSize: 16, color: '#555', marginTop: 15 },
   modalErrorText: { textAlign: 'center', fontSize: 16, color: '#D9534F', marginTop: 15 },
+  
+  // NEW MODAL STYLES
+  moodContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 10,
+    backgroundColor: Colors.bubbleLight,
+    borderRadius: 10,
+    marginBottom: 15,
+  },
+  moodLabel: {
+    fontSize: 14,
+    color: Colors.textDark,
+    marginRight: 5,
+  },
+  moodText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: Colors.primaryBlue,
+  },
+  sendRecButton: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#0e425dff', // Green send button
+    borderRadius: 12,
+    padding: 14,
+    marginTop: 20,
+    elevation: 4,
+  },
+  sendRecButtonText: {
+    color: 'white',
+    textAlign: 'center',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 10,
+  },
+  // END NEW MODAL STYLES
+
   recItem: { 
     flexDirection: 'row', 
     alignItems: 'flex-start',
@@ -818,3 +1090,10 @@ const styles = StyleSheet.create({
   },
   modalCloseButtonText: { color: 'white', textAlign: 'center', fontSize: 16, fontWeight: '600' },
 });
+
+
+
+
+
+
+
