@@ -7,7 +7,8 @@ import { Text } from '../../components/Themed';
 import UserAvatar from '../../components/UserAvatar';
 import { db } from '../../config/firebase';
 import { useAuth } from '../../contexts/AuthContext';
-import CreatePostModal from '../../components/CreatePostModal';
+import CreatePostModal from '../create/CreatePostModal';
+import CommentsModal from '../create/CommentsModal';
 
 interface FeedPost {
   id: string;
@@ -28,6 +29,8 @@ export default function FeedScreen() {
   const [loading, setLoading] = useState(true);
   const { user } = useAuth();
   const [isModalVisible, setIsModalVisible] = useState(false);
+  const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
+  const [isCommentsModalVisible, setIsCommentsModalVisible] = useState(false);
 
   useEffect(() => {
     loadPosts();
@@ -83,6 +86,17 @@ export default function FeedScreen() {
     }
   };
 
+  const handleOpenComments = (postId: string) => {
+    setSelectedPostId(postId);
+    setIsCommentsModalVisible(true);
+  };
+
+  const handleCloseComments = () => {
+    setIsCommentsModalVisible(false);
+    setSelectedPostId(null);
+    loadPosts(); // Refresh to update comment counts
+  };
+
   const renderPost = ({ item }: { item: FeedPost }) => {
     const isLiked = item.likedBy.includes(user?.uid || '');
     
@@ -128,7 +142,10 @@ export default function FeedScreen() {
             </Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.actionButton}>
+          <TouchableOpacity 
+            style={styles.actionButton}
+            onPress={() => handleOpenComments(item.id)}
+          >
             <FontAwesome name="comment-o" size={20} color="#666" />
             <Text style={styles.actionText}>{item.comments}</Text>
           </TouchableOpacity>
@@ -158,6 +175,14 @@ export default function FeedScreen() {
           setIsModalVisible(false);
         }}
       />
+
+      {selectedPostId && (
+        <CommentsModal
+          visible={isCommentsModalVisible}
+          postId={selectedPostId}
+          onClose={handleCloseComments}
+        />
+      )}
 
       <FlatList
         data={posts}
@@ -258,4 +283,4 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-}); 
+});
