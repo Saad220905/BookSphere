@@ -45,10 +45,9 @@ export default function TargetProfileScreen() {
 
   const isViewingSelf = targetId === user?.uid;
 
-  // Real-time Profile Listener (Loads target user's profile)
   useEffect(() => {
     if (!db || !targetId) {
-        setProfile(createMockProfile()); // Fallback
+        setProfile(createMockProfile() as UserProfile); 
         setIsLoading(false);
         return;
     }
@@ -59,12 +58,12 @@ export default function TargetProfileScreen() {
         if (docSnapshot.exists()) {
             setProfile(docSnapshot.data() as UserProfile);
         } else {
-            setProfile(createMockProfile());
+            setProfile(createMockProfile() as UserProfile);
         }
         setIsLoading(false); 
     }, (error) => {
         console.error("Error fetching target profile:", error);
-        setProfile(createMockProfile());
+        setProfile(createMockProfile() as UserProfile);
         setIsLoading(false);
     });
 
@@ -72,11 +71,10 @@ export default function TargetProfileScreen() {
     
   }, [targetId, db]);
 
-  // Load Posts for Target User
   const loadUserPosts = useCallback(async () => {
     try {
       if (!db || !targetId) {
-        setUserPosts(createMockPosts(5));
+        setUserPosts(createMockPosts(5) as UserPost[]);
         return;
       }
 
@@ -94,17 +92,30 @@ export default function TargetProfileScreen() {
       setUserPosts(postsData);
     } catch (error) {
       console.warn('Using mock posts due to error:', error);
-      setUserPosts(createMockPosts(5));
+      setUserPosts(createMockPosts(5) as UserPost[]);
     }
   }, [targetId]);
 
-  // Combined Initialization
   useEffect(() => {
     if (targetId) {
         loadUserPosts();
         setActiveTab('posts');
     }
   }, [targetId, loadUserPosts]);
+
+  const navigateToSendRecommendation = () => {
+      if (!profile?.displayName) {
+          Alert.alert("Error", "Profile data missing.");
+          return;
+      }
+      router.push({
+          pathname: '/recommendation/send',
+          params: {
+              recipientId: targetId,
+              recipientName: profile.displayName,
+          }
+      });
+  };
 
   const renderPost = ({ item }: { item: UserPost }) => (
     <View style={styles.postCard}>
@@ -118,13 +129,13 @@ export default function TargetProfileScreen() {
         </View>
       )}
       <View style={styles.postStats}>
-        <View style={styles.stats}>
+        <View style={styles.stat}>
           <FontAwesome name="heart" size={14} color="#666" />
-          <Text style={styles.tabText}>{item.likes}</Text>
+          <Text style={styles.statText}>{item.likes}</Text>
         </View>
-        <View style={styles.stats}>
+        <View style={styles.stat}>
           <FontAwesome name="comment" size={14} color="#666" />
-          <Text style={styles.tabText}>{item.comments}</Text>
+          <Text style={styles.statText}>{item.comments}</Text>
         </View>
       </View>
     </View>
@@ -148,14 +159,14 @@ export default function TargetProfileScreen() {
 
   if (!targetId || isViewingSelf) {
     return (
-        <SafeAreaView style={styles.container}>
-            <View style={styles.loadingContainer}>
-                <Text style={{color: '#ff4444'}}>Error: Profile not found or incorrect route.</Text>
-                <TouchableOpacity onPress={() => router.back()} style={{marginTop: 20}}>
-                    <Text style={{color: '#0a7ea4'}}>Go Back</Text>
-                </TouchableOpacity>
-            </View>
-        </SafeAreaView>
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+        <Text style={{color: '#ff4444'}}>Error: Profile not found or incorrect route.</Text>
+          <TouchableOpacity onPress={() => router.back()} style={{marginTop: 20}}>
+            <Text style={{color: '#0a7ea4'}}>Go Back</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
     );
   }
 
@@ -166,22 +177,26 @@ export default function TargetProfileScreen() {
     <SafeAreaView style={styles.container}>
       <ScrollView style={styles.scrollView}>
         <View style={styles.header}>
-            <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-                <FontAwesome name="arrow-left" size={24} color="#666" />
-            </TouchableOpacity>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+            <FontAwesome name="arrow-left" size={24} color="#666" />
+          </TouchableOpacity>
 
-            <Text style={styles.title}>{friendDisplayName}</Text>
+          <Text style={styles.title}>{friendDisplayName}</Text>
             
-            <View style={styles.headerActions}>
-                <TouchableOpacity onPress={() => {
-                    router.push({
-                        pathname: `/chat/${targetId}`,
-                        params: { otherUserName: friendDisplayName }
-                    });
-                }}>
-                    <FontAwesome name="comment" size={24} color="#0a7ea4" />
-                </TouchableOpacity>
-            </View>
+          <View style={styles.headerActions}>
+            <TouchableOpacity onPress={navigateToSendRecommendation}>
+              <FontAwesome name="send" size={24} color="#0a7ea4" />
+            </TouchableOpacity>
+                
+            <TouchableOpacity onPress={() => {
+              router.push({
+                pathname: `/chat/${targetId}`,
+                params: { otherUserName: friendDisplayName }
+              });
+            }}>
+              <FontAwesome name="comment" size={24} color="#0a7ea4" />
+            </TouchableOpacity>
+          </View>
         </View>
 
         <View style={styles.profileSection}>
@@ -252,153 +267,149 @@ const styles = StyleSheet.create({
 		borderBottomColor: '#0a7ea4', 
 		borderBottomWidth: 2 
 	},
-  activeTabText: { 
+	activeTabText: { 
 		color: '#0a7ea4', 
 		fontWeight: '600' 
 	},
-  bio: { 
+	bio: { 
 		color: '#333', 
 		fontSize: 16, 
 		lineHeight: 24, 
 		marginTop: 12, 
 		textAlign: 'center' 
 	},
-  bookInfo: { 
+	bookInfo: { 
 		alignItems: 'center', 
 		flexDirection: 'row', 
 		marginBottom: 8 
 	},
-  bookText: { 
+	bookText: { 
 		color: '#0a7ea4', 
 		fontSize: 14, 
 		marginLeft: 8 
 	},
-  container: { 
+	container: { 
 		backgroundColor: '#fff', 
 		flex: 1 
 	},
-  displayName: { 
+	displayName: { 
 		fontSize: 24, 
 		fontWeight: '600', 
 		marginTop: 12 
 	},
-  email: { 
+	email: { 
 		color: '#666', 
 		fontSize: 14, 
 		marginTop: 4 
-	}, // Used for bio display here
-  genreTag: { 
+	},
+	genreTag: { 
 		backgroundColor: '#f0f8ff', 
 		borderRadius: 16, 
 		paddingHorizontal: 12, 
 		paddingVertical: 6 
 	},
-  genreText: { 
+	genreText: { 
 		color: '#0a7ea4', 
 		fontSize: 12, 
 		fontWeight: '500' 
 	},
-  genresList: { 
+	genresList: { 
 		flexDirection: 'row', 
 		flexWrap: 'wrap', 
 		gap: 8 
 	},
-  genresSection: { 
+	genresSection: { 
 		marginTop: 20, 
 		width: '100%' 
 	},
-  goalProgress: { 
-		alignItems: 'center' 
-	},
-  goalText: { 
-		color: '#666', 
-		fontSize: 14 
-	},
-  header: { 
+	header: { 
 		alignItems: 'center', 
 		flexDirection: 'row', 
 		padding: 16, 
 		justifyContent: 'space-between' 
 	},
-  headerActions: { 
+	headerActions: { 
 		flexDirection: 'row', 
 		alignItems: 'center', 
 		gap: 15 
 	},
-  backButton: { 
+	backButton: { 
 		marginRight: 15 
 	},
-  postCard: { 
+	postCard: { 
 		backgroundColor: '#f8f9fa', 
 		borderRadius: 12, 
 		marginBottom: 12, 
 		padding: 16 
 	},
-  postContent: { 
+	postContent: { 
 		fontSize: 16, 
 		lineHeight: 24, 
 		marginBottom: 8 
 	},
-  postStats: { 
+	postStats: { 
 		flexDirection: 'row', 
 		gap: 16 
 	},
-  postsList: { 
+	stat: { 
+		alignItems: 'center', 
+		flexDirection: 'row', 
+		gap: 4 
+	},
+	statText: { 
+		color: '#666', 
+		fontSize: 12 
+	},
+	postsList: { 
 		padding: 16 
 	},
-  profileSection: { 
+	profileSection: { 
 		alignItems: 'center', 
 		padding: 20 
 	},
-  scrollView: { 
+	scrollView: { 
 		flex: 1 
 	},
-  sectionTitle: { 
+	sectionTitle: { 
 		fontSize: 18, 
 		fontWeight: '600', 
 		marginBottom: 12 
 	},
-  statItem: { 
+	statItem: { 
 		alignItems: 'center' 
 	},
-  statLabel: { 
+	statLabel: { 
 		color: '#666', 
 		fontSize: 12, 
 		marginTop: 4 
 	},
-  statNumber: { 
+	statNumber: { 
 		fontSize: 20, 
 		fontWeight: 'bold' 
 	},
-  stats: { 
+	stats: { 
 		flexDirection: 'row', 
 		justifyContent: 'space-around', 
 		marginTop: 20, 
 		width: '100%' 
 	},
-  tab: { 
+	tab: { 
 		flex: 1, 
 		paddingVertical: 12 
 	},
-  tabText: { 
+	tabText: { 
 		color: '#666', 
 		fontSize: 16, 
 		textAlign: 'center' 
 	},
-  tabs: { 
+	tabs: { 
 		flexDirection: 'row', 
 		marginTop: 20 
 	},
-  title: { 
+	title: { 
 		fontSize: 24, 
 		fontWeight: 'bold', 
 		flex: 1, 
 		textAlign: 'center' 
-	},
-  emptyList: { 
-		padding: 20, 
-		alignItems: 'center', 
-		justifyContent: 'center', 
-		minHeight: 100 
 	},
 });
