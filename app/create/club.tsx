@@ -87,7 +87,7 @@ export default function CreateClubScreen() {
         const bookDoc = await addDoc(booksRef, {
           title: bookTitle,
           author: bookAuthor,
-          coverUrl: bookUrl || null,
+          pdfUrl: bookUrl || null, // Changed from coverUrl to pdfUrl for PDF reading
           createdAt: serverTimestamp(),
           createdBy: user.uid,
         });
@@ -377,5 +377,10 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 20,
     fontWeight: '600',
+  },
+  helperText: {
+    color: '#666',
+    fontSize: 13,
+    marginTop: 4,
   },
 });
