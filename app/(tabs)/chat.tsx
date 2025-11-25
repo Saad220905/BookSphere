@@ -1,6 +1,6 @@
 import { FontAwesome } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { collection, onSnapshot, Firestore, query, where, addDoc, serverTimestamp, doc, updateDoc, deleteDoc, runTransaction, arrayUnion, Timestamp } from 'firebase/firestore';
+import { collection, onSnapshot, Firestore, query, where, addDoc, serverTimestamp, doc, updateDoc, deleteDoc, runTransaction, arrayUnion, arrayRemove, Timestamp, QuerySnapshot,DocumentData,QueryDocumentSnapshot } from 'firebase/firestore';
 import React, { useEffect, useState, useMemo } from 'react';
 import {
   FlatList,
@@ -37,6 +37,10 @@ export default function ChatScreen() {
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [loadingRequests, setLoadingRequests] = useState(true);
   const [loadingFriends, setLoadingFriends] = useState(true); // State for loading friends
+  
+  // FIX: Counter to manually trigger friend list refetch after accepting/unfriending
+  const [friendsDataChangeCounter, setFriendsDataChangeCounter] = useState(0); 
+
   const { user } = useAuth();
   const firestoreDb = db as Firestore;
 
@@ -63,7 +67,7 @@ export default function ChatScreen() {
       });
       setAllUsers(usersList);
       setLoadingUsers(false);
-    }, (error) => {
+    }, (error: Error) => { // Fixed implicit 'any' type
         console.error("Error fetching users: ", error);
         setLoadingUsers(false);
         Alert.alert("Error", "Could not fetch users.");
@@ -84,11 +88,11 @@ export default function ChatScreen() {
        where('toUserId', '==', user.uid),
        where('status', '==', 'pending') // Only show pending requests
      );
-     const unsubscribe = onSnapshot(requestsQuery, (snapshot) => {
+       const unsubscribe = onSnapshot(requestsQuery, (snapshot: QuerySnapshot<DocumentData>) => { // Fixed implicit 'any' type
        const requests = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as FriendRequest));
        setIncomingRequests(requests);
        setLoadingRequests(false);
-     }, (error) => {
+     }, (error: Error) => { // Fixed implicit 'any' type
          console.error("Error fetching friend requests:", error);
          setLoadingRequests(false);
          Alert.alert("Error", "Could not fetch friend requests.");
@@ -96,7 +100,7 @@ export default function ChatScreen() {
      return () => unsubscribe();
    }, [user, firestoreDb]);
 
-   // --- Fetch Friends (using the friends array on user profile) ---
+   // --- FIX: Fetch Friends (Triggered by friendsDataChangeCounter) ---
    useEffect(() => {
         const fetchFriends = async () => {
           if (!user || !firestoreDb) {
@@ -126,8 +130,8 @@ export default function ChatScreen() {
            }
         };
         fetchFriends();
-        // Rerun whenever the user changes, or potentially after accepting a request (though listeners might handle this)
-   }, [user, firestoreDb]);
+        // DEPENDENCY ARRAY FIX: Rerun when user changes OR when the counter changes
+   }, [user, firestoreDb, friendsDataChangeCounter]);
 
 
   // --- Search Logic (Filters allUsers based on genre, excluding existing friends) ---
@@ -197,10 +201,14 @@ export default function ChatScreen() {
             await runTransaction(firestoreDb, async (transaction) => {
                 // 1. Check if users still exist (optional but good practice)
                 const senderDoc = await transaction.get(senderUserRef);
-                if (!senderDoc.exists()) { throw new Error("Sender user no longer exists."); }
+                if (!senderDoc.exists()) { 
+                    // Clean up the request if sender doesn't exist
+                    transaction.delete(requestRef); 
+                    throw new Error("Sender user no longer exists."); 
+                }
 
-                // 2. Update request status to 'accepted'
-                transaction.update(requestRef, { status: 'accepted' });
+                // 2. Update request status to 'accepted' (or delete it, deleting is cleaner)
+                transaction.delete(requestRef); // Listener handles removal from incomingRequests
 
                 // 3. Add sender to current user's friend list (using arrayUnion)
                 transaction.update(currentUserRef, {
@@ -213,7 +221,10 @@ export default function ChatScreen() {
                 });
             });
             Alert.alert("Friend Added!", `You are now friends with ${request.fromUserName}.`);
-            // The friend list useEffect might refetch, or you could manually update state here
+            
+            // FIX: Manually increment the counter to trigger the friends list useEffect immediately
+            setFriendsDataChangeCounter(c => c + 1);
+
         } 
         catch (error) {
             console.error("Error accepting friend request:", error);
@@ -226,17 +237,56 @@ export default function ChatScreen() {
         if (!firestoreDb) return;
         const requestRef = doc(firestoreDb, 'friendRequests', requestId);
         try {
-            // Option 1: Update status to 'declined' (keeps a record)
-            // await updateDoc(requestRef, { status: 'declined' });
-
-            // Option 2: Delete the request document entirely (simpler for UI)
+            // Delete the request document entirely (simpler for UI)
             await deleteDoc(requestRef);
             // The listener will automatically remove it from the incomingRequests state
-
         } catch (error) {
             console.error("Error declining friend request:", error);
             Alert.alert("Error", "Could not decline friend request.");
         }
+    };
+
+    // --- NEW FEATURE: Unfriend a Friend ---
+    const handleUnfriend = (friend: UserProfile) => {
+      if (!user || !firestoreDb) return;
+
+      Alert.alert(
+        'Unfriend?',
+        `Are you sure you want to unfriend ${friend.displayName || 'this user'}? This cannot be undone.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Unfriend', 
+            style: 'destructive', 
+            onPress: async () => {
+              const currentUserRef = doc(firestoreDb, 'users', user.uid);
+              const friendUserRef = doc(firestoreDb, 'users', friend.uid);
+
+              try {
+                await runTransaction(firestoreDb, async (transaction) => {
+                  // 1. Remove friend from current user's friend list (using arrayRemove)
+                  transaction.update(currentUserRef, {
+                    friends: arrayRemove(friend.uid)
+                  });
+
+                  // 2. Remove current user from friend's friend list (using arrayRemove)
+                  transaction.update(friendUserRef, {
+                    friends: arrayRemove(user.uid)
+                  });
+                });
+                Alert.alert("Unfriended", `${friend.displayName || 'User'} has been removed from your friends list.`);
+                
+                // FIX: Manually increment the counter to trigger the friends list useEffect immediately
+                setFriendsDataChangeCounter(c => c + 1);
+
+              } catch (error) {
+                console.error("Error unfriending:", error);
+                Alert.alert("Error", "Could not unfriend user.");
+              }
+            }
+          }
+        ]
+      );
     };
 
 
@@ -273,6 +323,7 @@ export default function ChatScreen() {
     <TouchableOpacity
       style={styles.userCard}
       onPress={() => handleChatPress(item)} // Navigate to chat on press
+      onLongPress={() => handleUnfriend(item)} // NEW: Option to unfriend on long press
     >
       <UserAvatar
         photoUrl={item.photoURL}
@@ -283,7 +334,11 @@ export default function ChatScreen() {
         <Text style={styles.userName}>{item.displayName || 'Anonymous User'}</Text>
         <Text style={styles.userActionText}>Chat now</Text>
       </View>
-      <FontAwesome name="chevron-right" size={20} color="#666" />
+      {/* NEW: Unfriend button on the right */}
+      <TouchableOpacity onPress={() => handleUnfriend(item)} style={styles.unfriendButton}>
+        <FontAwesome name="user-times" size={20} color="#FF3B30" />
+      </TouchableOpacity>
+      <FontAwesome name="chevron-right" size={20} color="#666" style={{ marginLeft: 10 }} />
     </TouchableOpacity>
   );
 
@@ -347,8 +402,9 @@ export default function ChatScreen() {
          // Show Friend Requests and Friends List if query is empty
          <FlatList
            // Combine incoming requests and friends list for the main view
+           // Requests should show first, then friends.
            data={[...incomingRequests, ...friendsList]}
-           keyExtractor={(item, index) => (item as FriendRequest).id || (item as UserProfile).uid || `item-${index}` } // Use unique ID from either type
+           keyExtractor={(item, index) => ('status' in item ? (item as FriendRequest).id : (item as UserProfile).uid) || `item-${index}` } // Use unique ID from either type
            renderItem={({ item }) => {
                // Determine which type of item it is based on structure
                if ('status' in item && item.status === 'pending') {
@@ -464,6 +520,13 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
     },
+    // NEW: Unfriend button on the friend item
+    unfriendButton: {
+        padding: 8,
+        borderRadius: 20,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
     
     emptyText: { 
         textAlign: 'center', 
@@ -519,6 +582,6 @@ const styles = StyleSheet.create({
         backgroundColor: '#34C759', // Brighter, modern iOS green
     },
     declineButton: {
-        backgroundColor: '#FF3B30', // Brighter, modern iOS red
+        backgroundColor: '#f80e02ff', // Brighter, modern iOS red
     },
 });
