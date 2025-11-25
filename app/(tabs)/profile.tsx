@@ -8,6 +8,7 @@ import { Text } from '../../components/Themed';
 import UserAvatar from '../../components/UserAvatar';
 import { db } from '../../config/firebase';
 import { useAuth } from '../../contexts/AuthContext';
+import { useNotifications } from '../../contexts/NotificationContext';
 import { createMockUser, createMockProfile, createMockPosts } from '../../utils/mockData';
 import { Alert } from 'react-native'; // Import Alert
 
@@ -36,6 +37,7 @@ export default function ProfileScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'posts' | 'videos' | 'books'>('posts');
   const { user } = useAuth();
+  const { unreadCount } = useNotifications();
 
   // Load profile (Firestore or mock)
   // const loadProfile = useCallback(async () => {
@@ -130,7 +132,6 @@ export default function ProfileScreen() {
   // Initialize profile + posts
   useEffect(() => {
     if (!user) {
-      // Mock data when no Firebase user
       const mockUser = createMockUser();
       console.warn('Using mock user:', mockUser.displayName);
       setProfile(createMockProfile());
@@ -199,6 +200,19 @@ export default function ProfileScreen() {
         <View style={styles.header}>
           <Text style={styles.title}>Profile</Text>
           <View style={{ flexDirection: 'row', gap: 50 }}></View>
+
+          <TouchableOpacity 
+            onPress={() => router.push('/notifications')}
+            style={styles.notificationButton}
+          >
+            <FontAwesome name="bell" size={24} color="#666" />
+            {unreadCount > 0 && (
+              <View style={styles.badgeContainer}>
+                <Text style={styles.badgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+
           <TouchableOpacity onPress={() => router.push('/profile/edit')}>
             <FontAwesome name="cog" size={24} color="#666" />
           </TouchableOpacity>
@@ -357,6 +371,26 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     padding: 16,
+  },
+  notificationButton: {
+    position: 'relative', // Allows badge to position absolutely
+  },
+  badgeContainer: {
+    position: 'absolute',
+    top: -5,
+    right: -10,
+    backgroundColor: '#ff4444',
+    borderRadius: 9,
+    minWidth: 18,
+    height: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 2,
+  },
+  badgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: 'bold',
   },
   postCard: {
     backgroundColor: '#f8f9fa',
