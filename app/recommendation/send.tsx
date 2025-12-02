@@ -214,7 +214,7 @@ export default function SendRecommendationScreen() {
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>1. Select Book (Search Open Library)</Text>
+          <Text style={styles.sectionTitle}>1. Select Book</Text>
           
           <TextInput
             style={styles.searchInput}
