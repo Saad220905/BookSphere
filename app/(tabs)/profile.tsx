@@ -19,6 +19,8 @@ interface UserProfile {
   booksRead?: number;
   friends?: number;
   joinDate?: string;
+  displayName?: string;
+  photoURL?: string;
 }
 
 interface UserPost {
@@ -36,7 +38,7 @@ export default function ProfileScreen() {
   const [userPosts, setUserPosts] = useState<UserPost[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'posts' | 'videos' | 'books'>('posts');
-  const { user, signOut } = useAuth();
+  const { user } = useAuth();
   const { unreadCount } = useNotifications();
 
   // Load profile (Firestore or mock)
@@ -184,6 +186,9 @@ export default function ProfileScreen() {
     );
   }
 
+  const currentDisplayName = profile?.displayName || "User Profile";
+  const currentPhotoUrl = profile?.photoURL;
+
   if (!user && !profile) {
     return (
       <SafeAreaView style={styles.container}>
@@ -194,44 +199,36 @@ export default function ProfileScreen() {
     );
   }
 
-  const handleSignOut = async () => {
-    try {
-      await signOut();
-      router.replace('/(auth)/login');
-    } catch (error) {
-      console.error('Error signing out:', error);
-      Alert.alert('Error', 'Failed to sign out. Please try again.');
-    }
-  };
-
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView style={styles.scrollView}>
         <View style={styles.header}>
           <Text style={styles.title}>Profile</Text>
-          <View style={{ flexDirection: 'row', gap: 50 }}></View>
-
-          <TouchableOpacity 
-            onPress={() => router.push('/notifications')}
-            style={styles.notificationButton}
-          >
-            <FontAwesome name="bell" size={24} color="#666" />
-            {unreadCount > 0 && (
-              <View style={styles.badgeContainer}>
-                <Text style={styles.badgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
-              </View>
-            )}
-          </TouchableOpacity>
-
-          <TouchableOpacity onPress={() => router.push('/profile/edit')}>
-            <FontAwesome name="cog" size={24} color="#666" />
-          </TouchableOpacity>
+          <View style={styles.actionGroup}> 
+            {/* Notification Button */}
+            <TouchableOpacity 
+              onPress={() => router.push('/notifications')}
+              style={styles.notificationButton}
+            >
+              <FontAwesome name="bell" size={24} color="#666" />
+              {unreadCount > 0 && (
+                <View style={styles.badgeContainer}>
+                  <Text style={styles.badgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+            
+            {/* Settings Button */}
+            <TouchableOpacity onPress={() => router.push('/profile/edit')}>
+              <FontAwesome name="cog" size={24} color="#666" />
+            </TouchableOpacity>
+          </View>
         </View>
 
         <View style={styles.profileSection}>
           <UserAvatar
-            photoUrl={user?.photoURL || createMockUser().photoURL || undefined}
-            displayName={user?.displayName || createMockUser().displayName}
+            photoUrl={currentPhotoUrl || undefined} // Must be null or undefined to trigger fallback
+            displayName={currentDisplayName}      // Must be a non-empty string
             size={100}
           />
           <Text style={styles.displayName}>{user?.displayName || createMockUser().displayName}</Text>
@@ -295,7 +292,7 @@ export default function ProfileScreen() {
           />
         )}
 
-        <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
+        <TouchableOpacity style={styles.signOutButton} onPress={() => {}}>
           <FontAwesome name="sign-out" size={20} color="#ff4444" />
           <Text style={styles.signOutText}>Sign Out</Text>
         </TouchableOpacity>
@@ -382,8 +379,13 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     padding: 16,
   },
+  actionGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 20,
+  },
   notificationButton: {
-    position: 'relative', // Allows badge to position absolutely
+    position: 'relative',
   },
   badgeContainer: {
     position: 'absolute',
