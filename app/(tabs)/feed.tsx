@@ -1,12 +1,14 @@
 import { FontAwesome } from '@expo/vector-icons';
-import { collection, doc, getDoc, getDocs, orderBy, query, updateDoc } from 'firebase/firestore';
+import { router } from 'expo-router';
+import { collection, doc, getDoc, getDocs, orderBy, query, updateDoc, addDoc, serverTimestamp, setDoc, Firestore } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
-import { FlatList, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { FlatList, StyleSheet, TouchableOpacity, View, Modal, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Text } from '../../components/Themed';
 import UserAvatar from '../../components/UserAvatar';
 import { db } from '../../config/firebase';
 import { useAuth } from '../../contexts/AuthContext';
+import { getUserProfile, UserProfile } from '../../utils/userProfile';
 import CreatePostModal from '../create/CreatePostModal';
 import CommentsModal from '../create/CommentsModal';
 
@@ -31,6 +33,10 @@ export default function FeedScreen() {
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
   const [isCommentsModalVisible, setIsCommentsModalVisible] = useState(false);
+  const [isShareModalVisible, setIsShareModalVisible] = useState(false);
+  const [selectedPostForShare, setSelectedPostForShare] = useState<FeedPost | null>(null);
+  const [friends, setFriends] = useState<UserProfile[]>([]);
+  const [loadingFriends, setLoadingFriends] = useState(false);
 
   useEffect(() => {
     loadPosts();
@@ -97,6 +103,87 @@ export default function FeedScreen() {
     loadPosts(); // Refresh to update comment counts
   };
 
+  const loadFriends = async () => {
+    if (!user || !db) {
+      setFriends([]);
+      return;
+    }
+
+    try {
+      setLoadingFriends(true);
+      const currentUserProfile = await getUserProfile(user.uid);
+      const friendIds = currentUserProfile?.friends || [];
+
+      if (friendIds.length > 0) {
+        const friendPromises = friendIds.map(id => getUserProfile(id));
+        const friendProfiles = (await Promise.all(friendPromises)).filter(p => p !== null) as UserProfile[];
+        setFriends(friendProfiles);
+      } else {
+        setFriends([]);
+      }
+    } catch (error) {
+      console.error('Error loading friends:', error);
+      setFriends([]);
+    } finally {
+      setLoadingFriends(false);
+    }
+  };
+
+  const getConversationId = (uid1: string, uid2: string) => {
+    return uid1 < uid2 ? `${uid1}_${uid2}` : `${uid2}_${uid1}`;
+  };
+
+  const handleSharePost = async (friend: UserProfile) => {
+    if (!user || !db || !selectedPostForShare) return;
+
+    try {
+      const conversationId = getConversationId(user.uid, friend.uid);
+      const firestoreDb = db as Firestore;
+
+      // Ensure conversation document exists
+      const conversationRef = doc(firestoreDb, 'conversations', conversationId);
+      const conversationDoc = await getDoc(conversationRef);
+      
+      if (!conversationDoc.exists()) {
+        await setDoc(conversationRef, {
+          participants: [user.uid, friend.uid],
+          createdAt: serverTimestamp(),
+        });
+      }
+
+      // Format the shared post message
+      let shareMessage = `📖 Shared post from ${selectedPostForShare.userDisplayName}:\n\n${selectedPostForShare.content}`;
+      
+      if (selectedPostForShare.bookTitle) {
+        shareMessage += `\n\n📚 Book: ${selectedPostForShare.bookTitle}`;
+        if (selectedPostForShare.bookAuthor) {
+          shareMessage += ` by ${selectedPostForShare.bookAuthor}`;
+        }
+      }
+
+      // Send the message
+      const messagesCollection = collection(firestoreDb, 'conversations', conversationId, 'messages');
+      await addDoc(messagesCollection, {
+        text: shareMessage,
+        senderId: user.uid,
+        createdAt: serverTimestamp(),
+      });
+
+      setIsShareModalVisible(false);
+      setSelectedPostForShare(null);
+      Alert.alert('Shared!', `Post shared with ${friend.displayName}`);
+    } catch (error) {
+      console.error('Error sharing post:', error);
+      Alert.alert('Error', 'Failed to share post. Please try again.');
+    }
+  };
+
+  const handleOpenShare = (post: FeedPost) => {
+    setSelectedPostForShare(post);
+    setIsShareModalVisible(true);
+    loadFriends();
+  };
+
   const renderPost = ({ item }: { item: FeedPost }) => {
     const isLiked = item.likedBy.includes(user?.uid || '');
     
@@ -150,7 +237,10 @@ export default function FeedScreen() {
             <Text style={styles.actionText}>{item.comments}</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.actionButton}>
+          <TouchableOpacity 
+            style={styles.actionButton}
+            onPress={() => handleOpenShare(item)}
+          >
             <FontAwesome name="share" size={20} color="#666" />
           </TouchableOpacity>
         </View>
@@ -183,6 +273,80 @@ export default function FeedScreen() {
           onClose={handleCloseComments}
         />
       )}
+
+      <Modal
+        visible={isShareModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => {
+          setIsShareModalVisible(false);
+          setSelectedPostForShare(null);
+        }}
+      >
+        <View style={styles.shareModalBackdrop}>
+          <View style={styles.shareModalContent}>
+            <View style={styles.shareModalHeader}>
+              <Text style={styles.shareModalTitle}>Share Post</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  setIsShareModalVisible(false);
+                  setSelectedPostForShare(null);
+                }}
+              >
+                <FontAwesome name="times" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
+
+            {loadingFriends ? (
+              <View style={styles.shareModalLoading}>
+                <ActivityIndicator size="large" color="#0a7ea4" />
+                <Text style={styles.shareModalLoadingText}>Loading friends...</Text>
+              </View>
+            ) : friends.length === 0 ? (
+              <View style={styles.shareModalEmpty}>
+                <FontAwesome name="user-friends" size={48} color="#ccc" />
+                <Text style={styles.shareModalEmptyText}>No friends yet</Text>
+                <Text style={styles.shareModalEmptySubtext}>
+                  Add friends to share posts with them
+                </Text>
+                <TouchableOpacity
+                  style={styles.shareModalAddFriendsButton}
+                  onPress={() => {
+                    setIsShareModalVisible(false);
+                    router.push('/(tabs)/chat');
+                  }}
+                >
+                  <Text style={styles.shareModalAddFriendsButtonText}>Go to Friends</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <FlatList
+                data={friends}
+                keyExtractor={(item) => item.uid}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={styles.shareModalFriendItem}
+                    onPress={() => handleSharePost(item)}
+                  >
+                    <UserAvatar
+                      photoUrl={item.photoURL}
+                      displayName={item.displayName || 'Friend'}
+                      size={50}
+                    />
+                    <View style={styles.shareModalFriendInfo}>
+                      <Text style={styles.shareModalFriendName}>
+                        {item.displayName || 'Friend'}
+                      </Text>
+                    </View>
+                    <FontAwesome name="chevron-right" size={16} color="#ccc" />
+                  </TouchableOpacity>
+                )}
+                contentContainerStyle={styles.shareModalFriendsList}
+              />
+            )}
+          </View>
+        </View>
+      </Modal>
 
       <FlatList
         data={posts}
@@ -282,5 +446,86 @@ const styles = StyleSheet.create({
   userName: {
     fontSize: 16,
     fontWeight: '600',
+  },
+  shareModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  shareModalContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '80%',
+    paddingBottom: 20,
+  },
+  shareModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  shareModalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  shareModalLoading: {
+    padding: 40,
+    alignItems: 'center',
+  },
+  shareModalLoadingText: {
+    marginTop: 12,
+    color: '#666',
+    fontSize: 14,
+  },
+  shareModalEmpty: {
+    padding: 40,
+    alignItems: 'center',
+  },
+  shareModalEmptyText: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginTop: 16,
+    color: '#333',
+  },
+  shareModalEmptySubtext: {
+    fontSize: 14,
+    color: '#666',
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  shareModalAddFriendsButton: {
+    backgroundColor: '#0a7ea4',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 20,
+    marginTop: 20,
+  },
+  shareModalAddFriendsButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  shareModalFriendsList: {
+    padding: 16,
+  },
+  shareModalFriendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  shareModalFriendInfo: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  shareModalFriendName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
   },
 });
