@@ -1,7 +1,8 @@
-import React from 'react';
+import React, {useEffect, useState} from 'react';
 import { StyleSheet, View, Text, Button, Image, ScrollView, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { calculateOverallBookSentiment } from '../utils/bookComments'; // IMPORT FOR BOOK OVERALL ANALYSIS
 
 // Placeholder cover image
 const PLACEHOLDER_COVER = 'https://placehold.co/200x300/1c1c1e/cccccc?text=No+Cover';
@@ -17,8 +18,26 @@ export default function BookSummaryScreen() {
   }>();
   const router = useRouter();
   const [coverLoading, setCoverLoading] = React.useState(true); 
+  //New State for Sentiment (BOOK OVERALL)
+  const [overallSentiment, setOverallSentiment] = useState<'Positive' | 'Negative' | 'Neutral' | 'Mixed' | 'No Comments' | 'Analysis Error' | 'Loading...'>('Loading...');
 
   const { title, author, publish_year, cover_url, pdf_url, book_id } = params;
+
+  //NEW useEffect HOOK TO FETCH SENTIMENT
+  useEffect(() => {
+    const fetchSentiment = async () => {
+        if (book_id) {
+            const result = await calculateOverallBookSentiment(book_id);
+            setOverallSentiment(result as any); 
+        } else {
+            setOverallSentiment('Analysis Error');
+        }
+    };
+    fetchSentiment();
+  }, [book_id]);
+
+
+
 
   if (!title || !pdf_url || !book_id) {
     return (
@@ -40,6 +59,22 @@ export default function BookSummaryScreen() {
       params: { pdf_url: pdf_url, book_id: book_id, book_title: title },
     });
   };
+
+  // Helper to determine the color/icon
+  const getSentimentStyle = (sentiment: string) => {
+    switch (sentiment) {
+      case 'Positive': return { color: '#4CAF50', emoji: '😊' }; // Green
+      case 'Negative': return { color: '#F44336', emoji: '😔' }; // Red
+      case 'Mixed': return { color: '#FF9800', emoji: '🤨' }; // Orange
+      case 'Neutral': return { color: '#2196F3', emoji: '😐' }; // Blue
+      default: return { color: '#777', emoji: '...' };
+    }
+  };
+
+  const sentimentDisplay = getSentimentStyle(overallSentiment);
+
+
+
 
   return (
     <SafeAreaView style={styles.container}>
@@ -63,6 +98,20 @@ export default function BookSummaryScreen() {
         <Text style={styles.title}>{title}</Text>
         <Text style={styles.author}>by {author || 'Unknown Author'}</Text>
         <Text style={styles.publishYear}>First published: {publish_year || 'N/A'}</Text>
+
+        {/* NEW SENTIMENT DISPLAY SECTION */}
+        <View style={styles.sentimentBox}>
+            <Text style={styles.sentimentLabel}>Overall Reader Sentiment:</Text>
+            {overallSentiment === 'Loading...' ? (
+                <ActivityIndicator size="small" color="#0000ff" />
+            ) : overallSentiment === 'No Comments' ? (
+                <Text style={styles.noCommentsText}>No Comments Yet</Text>
+            ) : (
+                <Text style={[styles.sentimentText, { color: sentimentDisplay.color }]}>
+                    {sentimentDisplay.emoji} {overallSentiment}
+                </Text>
+            )}
+        </View>
 
         {/* Read button */}
         <View style={styles.buttonContainer}>
@@ -130,4 +179,29 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontSize: 16,
   },
+  // NEW SENTIMENT STYLES
+  sentimentBox: {
+    padding: 15,
+    borderRadius: 8,
+    backgroundColor: '#fff',
+    width: '100%',
+    alignItems: 'center',
+    marginVertical: 15,
+    borderWidth: 1,
+    borderColor: '#eee',
+  },
+  sentimentLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 8,
+  },
+  sentimentText: {
+    fontSize: 24,
+    fontWeight: 'bold',
+  },
+  noCommentsText: {
+    fontSize: 16,
+    color: '#999',
+  }
 });

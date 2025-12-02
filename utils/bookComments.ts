@@ -1,4 +1,4 @@
-import { collection, query, where, onSnapshot, addDoc, serverTimestamp, Firestore, doc, runTransaction, arrayUnion, arrayRemove, increment, deleteDoc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, addDoc, serverTimestamp, Firestore, doc, runTransaction, arrayUnion, arrayRemove, increment, getDocs } from 'firebase/firestore';
 import { db } from '../config/firebase'; 
 import { GoogleGenAI } from '@google/genai';
 import { geminiConfig } from 'config/environment';
@@ -13,10 +13,7 @@ export interface Comment {
   likeCount: number; 
   likedBy: string[];  
   sentiment: 'Positive' | 'Negative' | 'Neutral' | 'AnalysisError';
-  isSpoiler: boolean;
 }
-
-export type PageSentiment = 'Positive' | 'Negative' | 'Neutral' | 'Mixed';
 
 class CommentError extends Error {
   constructor(message: string) {
@@ -33,7 +30,8 @@ function getFirestoreInstance(): Firestore {
 }
 
 // New function to calculate the overall sentiment score per page
-function calculatePageSentiment(comments: Comment[]): 'Positive' | 'Negative' | 'Neutral' | 'Mixed' {
+// REUSING EXPORT FOR OVERALL BOOK SENTIMENT
+export function calculateAggregateSentiment(comments: Comment[]): 'Positive' | 'Negative' | 'Neutral' | 'Mixed' {
   if (comments.length === 0) {
     return 'Neutral'; // No comments means neutral mood
   }
@@ -76,7 +74,7 @@ function calculatePageSentiment(comments: Comment[]): 'Positive' | 'Negative' | 
   }
 }
 
-export function listenForComments(bookId: string, page: number, callback: (comments: Comment[], pageSentiment: PageSentiment) => void) {
+export function listenForComments(bookId: string, page: number, callback: (comments: Comment[], pageSentiment: 'Positive' | 'Negative' | 'Neutral' | 'Mixed') => void) {
   const firestore = getFirestoreInstance();
   const commentsRef = collection(firestore, `books/${bookId}/comments`);
   const q = query(commentsRef, where('page', '==', page));
@@ -95,7 +93,6 @@ export function listenForComments(bookId: string, page: number, callback: (comme
         likeCount: data.likeCount || 0,
         likedBy: data.likedBy || [],
         sentiment: data.sentiment as Comment['sentiment'] || 'AnalysisError',
-        isSpoiler: data.isSpoiler || false,
       } as Comment);
     });
     // Sort by likes then creation time
@@ -103,7 +100,7 @@ export function listenForComments(bookId: string, page: number, callback: (comme
 
     //Modification/Addition for overall page scoring
     // Calculate the overall sentiment
-    const pageSentiment = calculatePageSentiment(comments);
+    const pageSentiment = calculateAggregateSentiment(comments);
 
     // Pass BOTH the comments and the new pageSentiment to the frontend
     callback(comments, pageSentiment);
@@ -115,7 +112,41 @@ export function listenForComments(bookId: string, page: number, callback: (comme
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
-export async function addComment(bookId: string, page: number, text: string, userId: string, isSpoiler: boolean) {
+
+export async function calculateOverallBookSentiment(bookId: string): Promise<'Positive' | 'Negative' | 'Neutral' | 'Mixed' | 'No Comments' | 'AnalysisError'> {
+    const firestore = getFirestoreInstance();
+    
+    try {
+        // Query ALL documents in the 'comments' subcollection for the entire book
+        // We use the 'books/{bookId}/comments' path pattern
+        const commentsRef = collection(firestore, `books/${bookId}/comments`);
+        // The query itself only needs to check the book ID, which is implied by the path.
+        
+        const q = query(commentsRef);
+        
+        const snapshot = await getDocs(q);
+
+        // 1. Extract comment data
+        const allComments = snapshot.docs.map(doc => doc.data() as Comment);
+
+        if (allComments.length === 0) {
+            return 'No Comments';
+        }
+
+        // 2. Reuse the powerful aggregation logic you already defined
+        const overallSentiment = calculateAggregateSentiment(allComments); 
+
+        return overallSentiment;
+
+    } catch (error) {
+        console.error("Error calculating overall book sentiment:", error);
+        return 'AnalysisError';
+    }
+}
+
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+export async function addComment(bookId: string, page: number, text: string, userId: string) {
   const firestore = getFirestoreInstance();
   const commentsRef = collection(firestore, `books/${bookId}/comments`);
 
@@ -173,7 +204,6 @@ export async function addComment(bookId: string, page: number, text: string, use
     likedBy: [],
     // --- 3. SAVE COMMENT AND SENTIMENT TO FIRESTORE ---
     sentiment: sentimentResult,
-    isSpoiler: isSpoiler,
   });
 }
 
@@ -207,15 +237,5 @@ export async function toggleLike(bookId:string, commentId: string, userId: strin
   } catch (e) {
     console.error("Like transaction failed: ", e);
     throw new CommentError("Could not update like status.");
-  }
-}
-
-export async function deleteComment(bookId: string, commentId: string): Promise<void> {
-  const firestore = getFirestoreInstance();
-  const commentRef = doc(firestore, `books/${bookId}/comments`, commentId);
-  try {
-    await deleteDoc(commentRef);
-  } catch (e) {
-    throw new CommentError("Could not delete comment.");
   }
 }
