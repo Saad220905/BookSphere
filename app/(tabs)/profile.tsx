@@ -36,7 +36,7 @@ export default function ProfileScreen() {
   const [userPosts, setUserPosts] = useState<UserPost[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'posts' | 'videos' | 'books'>('posts');
-  const { user } = useAuth();
+  const { user, signOut } = useAuth();
   const { unreadCount } = useNotifications();
 
   // Load profile (Firestore or mock)
@@ -194,6 +194,16 @@ export default function ProfileScreen() {
     );
   }
 
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+      router.replace('/(auth)/login');
+    } catch (error) {
+      console.error('Error signing out:', error);
+      Alert.alert('Error', 'Failed to sign out. Please try again.');
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView style={styles.scrollView}>
@@ -285,7 +295,7 @@ export default function ProfileScreen() {
           />
         )}
 
-        <TouchableOpacity style={styles.signOutButton} onPress={() => {}}>
+        <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
           <FontAwesome name="sign-out" size={20} color="#ff4444" />
           <Text style={styles.signOutText}>Sign Out</Text>
         </TouchableOpacity>

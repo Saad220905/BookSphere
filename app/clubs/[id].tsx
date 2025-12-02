@@ -412,8 +412,9 @@ export default function ClubDetailsScreen() {
           <PdfViewer
             source={{ uri: pdfUrl, cache: true }}
             bookId={book?.id || club?.bookId || id || 'club-book'}
-            onPageChanged={(page) => setCurrentReadingPage(page)}
-          />
+            onPageChanged={(page) => setCurrentReadingPage(page)} isNightMode={false} setIsNightMode={function (value: React.SetStateAction<boolean>): void {
+              throw new Error('Function not implemented.');
+            } }          />
         ) : (
           <View style={styles.emptyReader}>
             <FontAwesome name="file-pdf-o" size={32} color="#999" />
