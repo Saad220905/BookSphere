@@ -170,8 +170,8 @@ export default function TargetProfileScreen() {
     );
   }
 
-  const friendDisplayName = profile.displayName || 'Friend Profile';
-  const friendPhotoURL = profile.photoURL;
+  const friendDisplayName = profile?.displayName || 'Friend Profile';
+  const friendPhotoURL = profile?.photoURL;
 
   return (
     <SafeAreaView style={styles.container}>
