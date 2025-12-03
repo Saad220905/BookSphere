@@ -156,13 +156,10 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     if (!user || !db) return;
 
     try {
-      // Security note: The Firestore rule must ensure the user has permission 
-      // to delete this specific notification (i.e., user.uid == resource.data.userId).
       const notificationRef = doc(db, 'notifications', notificationId);
       await deleteDoc(notificationRef);
     } catch (error) {
       console.error('Error deleting notification:', error);
-      // Optional: Add an Alert here if the deletion fails
     }
   };
 
@@ -170,21 +167,13 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     if (!user || !db) {
       throw new Error('User or Database is not initialized');
     }
-    
-    // Safety Note: Firestore Security Rules must allow the user to delete 
-    // documents where the 'userId' matches their UID.
-
     try {
-      // 1. Get the list of IDs from the current state (this list is already filtered by user.uid)
       const deletePromises = notifications.map(async notification => {
         const docRef = doc(db as Firestore, 'notifications', notification.id);
-        // 2. Schedule the deletion of the document
         await deleteDoc(docRef);
       });
-      // 3. Wait for all deletions to complete
       await Promise.all(deletePromises);
       
-      // The onSnapshot listener will automatically update the 'notifications' state after deletion.
     } catch (error) {
       console.error('Error deleting all notifications:', error);
       throw new Error('Failed to delete all notifications');
