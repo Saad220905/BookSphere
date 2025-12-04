@@ -1,6 +1,6 @@
 import { FontAwesome } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { collection, onSnapshot, Firestore, query, where, addDoc, serverTimestamp, doc, updateDoc, deleteDoc, runTransaction, arrayUnion, arrayRemove, Timestamp, QuerySnapshot,DocumentData,QueryDocumentSnapshot } from 'firebase/firestore';
+import { collection, onSnapshot, Firestore, query, where, addDoc, serverTimestamp, doc, deleteDoc, runTransaction, arrayUnion, arrayRemove, Timestamp, QuerySnapshot, DocumentData } from 'firebase/firestore';
 import React, { useEffect, useState, useMemo } from 'react';
 import {
   FlatList,
@@ -12,11 +12,12 @@ import {
   Alert
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Text } from '../../components/Themed';
-import UserAvatar from '../../components/UserAvatar';
-import { db } from '../../config/firebase';
-import { useAuth } from '../../contexts/AuthContext';
-import { UserProfile, getUserProfile } from '../../utils/userProfile'; // Ensure UserProfile includes favoriteGenres and friends
+import { Text } from '@/components/Themed';
+import UserAvatar from '@/components/UserAvatar';
+import { db } from '@/config/firebase';
+import { useAuth } from '@/contexts/AuthContext';
+import { UserProfile, getUserProfile } from '@/utils/userProfile'; 
+import { useNotifications } from '@/contexts/NotificationContext';
 
 // Interface for Friend Request documents in Firestore
 interface FriendRequest {
@@ -38,10 +39,11 @@ export default function ChatScreen() {
   const [loadingRequests, setLoadingRequests] = useState(true);
   const [loadingFriends, setLoadingFriends] = useState(true); // State for loading friends
   
-  // FIX: Counter to manually trigger friend list refetch after accepting/unfriending
+  // Counter to manually trigger friend list refetch after accepting/unfriending
   const [friendsDataChangeCounter, setFriendsDataChangeCounter] = useState(0); 
 
   const { user } = useAuth();
+  const { createNotification } = useNotifications();
   const firestoreDb = db as Firestore;
 
   // --- Fetch All Users (excluding self) ---
@@ -67,7 +69,7 @@ export default function ChatScreen() {
       });
       setAllUsers(usersList);
       setLoadingUsers(false);
-    }, (error: Error) => { // Fixed implicit 'any' type
+    }, (error: Error) => { 
         console.error("Error fetching users: ", error);
         setLoadingUsers(false);
         Alert.alert("Error", "Could not fetch users.");
@@ -88,11 +90,11 @@ export default function ChatScreen() {
        where('toUserId', '==', user.uid),
        where('status', '==', 'pending') // Only show pending requests
      );
-       const unsubscribe = onSnapshot(requestsQuery, (snapshot: QuerySnapshot<DocumentData>) => { // Fixed implicit 'any' type
+       const unsubscribe = onSnapshot(requestsQuery, (snapshot: QuerySnapshot<DocumentData>) => { 
        const requests = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as FriendRequest));
        setIncomingRequests(requests);
        setLoadingRequests(false);
-     }, (error: Error) => { // Fixed implicit 'any' type
+     }, (error: Error) => { 
          console.error("Error fetching friend requests:", error);
          setLoadingRequests(false);
          Alert.alert("Error", "Could not fetch friend requests.");
@@ -100,7 +102,7 @@ export default function ChatScreen() {
      return () => unsubscribe();
    }, [user, firestoreDb]);
 
-   // --- FIX: Fetch Friends (Triggered by friendsDataChangeCounter) ---
+   // --- Fetch Friends (Triggered by friendsDataChangeCounter) ---
    useEffect(() => {
         const fetchFriends = async () => {
           if (!user || !firestoreDb) {
@@ -130,7 +132,6 @@ export default function ChatScreen() {
            }
         };
         fetchFriends();
-        // DEPENDENCY ARRAY FIX: Rerun when user changes OR when the counter changes
    }, [user, firestoreDb, friendsDataChangeCounter]);
 
 
@@ -144,24 +145,20 @@ export default function ChatScreen() {
 
     return allUsers.filter(u =>
       !friendIds.has(u.uid) && // Exclude users who are already friends
-      u.favoriteGenres?.some(genre => genre.toLowerCase().includes(lowerCaseQuery))
+      u.favoriteGenres?.some((genre: string) => genre.toLowerCase().includes(lowerCaseQuery))
     );
-  }, [searchQuery, allUsers, friendsList]); // Recalculate when search, allUsers, or friendsList change
+  }, [searchQuery, allUsers, friendsList]); 
 
   // --- Send Friend Request ---
   const handleAddFriend = async (targetUser: UserProfile) => {
     if (!user || !firestoreDb) return;
 
-    // Optional: Prevent sending request to self (should be filtered out already, but good check)
     if (user.uid === targetUser.uid) return;
 
-    // Optional: Check if already friends
      if (friendsList.some(friend => friend.uid === targetUser.uid)) {
          Alert.alert("Already Friends", `You are already friends with ${targetUser.displayName}.`);
          return;
      }
-
-     
 
     Alert.alert(
       'Send Friend Request?',
@@ -173,12 +170,26 @@ export default function ChatScreen() {
              try {
                  await addDoc(collection(firestoreDb, 'friendRequests'), {
                    fromUserId: user.uid,
-                   fromUserName: user.displayName || user.email?.split('@')[0] || 'User', // Use current user's info
+                   fromUserName: user.displayName || user.email?.split('@')[0] || 'User', 
                    fromUserPhoto: user.photoURL || null,
                    toUserId: targetUser.uid,
                    status: 'pending',
                    createdAt: serverTimestamp(),
                  });
+
+                //  // --- NOTIFICATION TRIGGER ---
+                //  await createNotification({
+                //    type: 'friend_request',
+                //    title: 'New Friend Request',
+                //    message: `${user.displayName || 'User'} sent you a friend request.`,
+                //    userId: targetUser.uid, // Notify the target user
+                //    fromUserId: user.uid,
+                //    fromUserDisplayName: user.displayName || 'User',
+                //    fromUserPhotoURL: user.photoURL,
+                //    targetId: user.uid, 
+                //    targetType: 'chat' 
+                //  });
+
                  Alert.alert('Request Sent!', `Friend request sent to ${targetUser.displayName || 'this user'}.`);
              } catch (error) {
                  console.error("Error sending friend request:", error);
@@ -199,30 +210,23 @@ export default function ChatScreen() {
 
         try {
             await runTransaction(firestoreDb, async (transaction) => {
-                // 1. Check if users still exist (optional but good practice)
                 const senderDoc = await transaction.get(senderUserRef);
                 if (!senderDoc.exists()) { 
-                    // Clean up the request if sender doesn't exist
                     transaction.delete(requestRef); 
                     throw new Error("Sender user no longer exists."); 
                 }
 
-                // 2. Update request status to 'accepted' (or delete it, deleting is cleaner)
-                transaction.delete(requestRef); // Listener handles removal from incomingRequests
+                transaction.delete(requestRef); 
 
-                // 3. Add sender to current user's friend list (using arrayUnion)
                 transaction.update(currentUserRef, {
                     friends: arrayUnion(request.fromUserId)
                 });
 
-                // 4. Add current user to sender's friend list (using arrayUnion)
                 transaction.update(senderUserRef, {
                     friends: arrayUnion(user.uid)
                 });
             });
             Alert.alert("Friend Added!", `You are now friends with ${request.fromUserName}.`);
-            
-            // FIX: Manually increment the counter to trigger the friends list useEffect immediately
             setFriendsDataChangeCounter(c => c + 1);
 
         } 
@@ -237,16 +241,14 @@ export default function ChatScreen() {
         if (!firestoreDb) return;
         const requestRef = doc(firestoreDb, 'friendRequests', requestId);
         try {
-            // Delete the request document entirely (simpler for UI)
             await deleteDoc(requestRef);
-            // The listener will automatically remove it from the incomingRequests state
         } catch (error) {
             console.error("Error declining friend request:", error);
             Alert.alert("Error", "Could not decline friend request.");
         }
     };
 
-    // --- NEW FEATURE: Unfriend a Friend ---
+    // --- Unfriend a Friend ---
     const handleUnfriend = (friend: UserProfile) => {
       if (!user || !firestoreDb) return;
 
@@ -264,19 +266,15 @@ export default function ChatScreen() {
 
               try {
                 await runTransaction(firestoreDb, async (transaction) => {
-                  // 1. Remove friend from current user's friend list (using arrayRemove)
                   transaction.update(currentUserRef, {
                     friends: arrayRemove(friend.uid)
                   });
 
-                  // 2. Remove current user from friend's friend list (using arrayRemove)
                   transaction.update(friendUserRef, {
                     friends: arrayRemove(user.uid)
                   });
                 });
                 Alert.alert("Unfriended", `${friend.displayName || 'User'} has been removed from your friends list.`);
-                
-                // FIX: Manually increment the counter to trigger the friends list useEffect immediately
                 setFriendsDataChangeCounter(c => c + 1);
 
               } catch (error) {
@@ -289,7 +287,6 @@ export default function ChatScreen() {
       );
     };
 
-
   // Navigate to chat screen with an existing friend
   const handleChatPress = (friend: UserProfile) => {
      router.push({
@@ -298,13 +295,39 @@ export default function ChatScreen() {
     });
   };
 
+  // --- Handle Options Menu (3 Dots) ---
+  const handleFriendOptions = (friend: UserProfile) => {
+    Alert.alert(
+      friend.displayName || 'Options',
+      'Choose an action',
+      [
+        {
+          text: 'View Profile',
+          onPress: () => {
+             // Navigate to the profile page of the friend
+             router.push(`/profile/${friend.uid}`);
+          }
+        },
+        {
+          text: 'Unfriend',
+          style: 'destructive',
+          onPress: () => handleUnfriend(friend) // Triggers the confirmation alert
+        },
+        {
+          text: 'Cancel',
+          style: 'cancel'
+        }
+      ]
+    );
+  };
+
   // Renders a user found via search, with an 'Add Friend' button
   const renderSearchResultItem = ({ item }: { item: UserProfile }) => (
     <View style={styles.userCard}>
        <UserAvatar
         photoUrl={item.photoURL}
         displayName={item.displayName || 'Anonymous'}
-        size={50}
+        size={65}
       />
       <View style={styles.userInfo}>
         <Text style={styles.userName}>{item.displayName || 'Anonymous User'}</Text>
@@ -323,22 +346,24 @@ export default function ChatScreen() {
     <TouchableOpacity
       style={styles.userCard}
       onPress={() => handleChatPress(item)} // Navigate to chat on press
-      onLongPress={() => handleUnfriend(item)} // NEW: Option to unfriend on long press
     >
       <UserAvatar
         photoUrl={item.photoURL}
         displayName={item.displayName || 'Anonymous'}
-        size={50}
+        size={70}
       />
       <View style={styles.userInfo}>
         <Text style={styles.userName}>{item.displayName || 'Anonymous User'}</Text>
         <Text style={styles.userActionText}>Chat now</Text>
       </View>
-      {/* NEW: Unfriend button on the right */}
-      <TouchableOpacity onPress={() => handleUnfriend(item)} style={styles.unfriendButton}>
-        <FontAwesome name="user-times" size={20} color="#FF3B30" />
+      
+      {/* Options Menu (3 dots) */}
+      <TouchableOpacity 
+        onPress={() => handleFriendOptions(item)} 
+        style={styles.optionsButton}
+      >
+        <FontAwesome name="ellipsis-v" size={20} color="#666" />
       </TouchableOpacity>
-      <FontAwesome name="chevron-right" size={20} color="#666" style={{ marginLeft: 10 }} />
     </TouchableOpacity>
   );
 
@@ -379,14 +404,14 @@ export default function ChatScreen() {
           placeholder="Search users by favorite genre..."
           placeholderTextColor="#999"
           value={searchQuery}
-          onChangeText={setSearchQuery} // Update state on text change
-          clearButtonMode="while-editing" // iOS clear button
-          autoCapitalize="none" // Prevent auto-capitalization
+          onChangeText={setSearchQuery} 
+          clearButtonMode="while-editing" 
+          autoCapitalize="none" 
         />
       </View>
 
       {/* Conditional List Rendering */}
-      {loadingUsers || loadingRequests || loadingFriends ? ( // Show loader if any data is loading
+      {loadingUsers || loadingRequests || loadingFriends ? ( 
         <ActivityIndicator style={styles.loader} size="large" color="#0a7ea4" />
       ) : searchQuery.trim() ? (
         // Show Search Results if query exists
@@ -401,40 +426,32 @@ export default function ChatScreen() {
       ) : (
          // Show Friend Requests and Friends List if query is empty
          <FlatList
-           // Combine incoming requests and friends list for the main view
-           // Requests should show first, then friends.
            data={[...incomingRequests, ...friendsList]}
-           keyExtractor={(item, index) => ('status' in item ? (item as FriendRequest).id : (item as UserProfile).uid) || `item-${index}` } // Use unique ID from either type
+           keyExtractor={(item, index) => ('status' in item ? (item as FriendRequest).id : (item as UserProfile).uid) || `item-${index}` } 
            renderItem={({ item }) => {
-               // Determine which type of item it is based on structure
                if ('status' in item && item.status === 'pending') {
-                   // Render friend request if it has 'status' property
                    return renderRequestItem({ item: item as FriendRequest });
                } else {
-                   // Render friend if it's a UserProfile (friend)
                    return renderFriendItem({ item: item as UserProfile });
                }
            }}
            ListHeaderComponent={() => (
                 <>
-                   {/* Show request header only if there are requests */}
                    {incomingRequests.length > 0 && (
                        <Text style={styles.listHeader}>Friend Requests ({incomingRequests.length})</Text>
                    )}
-                   {/* Always show friends header */}
                    <Text style={[
                        styles.listHeader,
-                       incomingRequests.length > 0 && { marginTop: 20 } // Add extra space if requests are shown
+                       incomingRequests.length > 0 && { marginTop: 20 } 
                    ]}>
                        Friends ({friendsList.length})
                    </Text>
                 </>
            )}
            ListEmptyComponent={
-                // Show specific message only if *both* requests and friends are empty
                 (incomingRequests.length === 0 && friendsList.length === 0) ? (
                      <Text style={styles.emptyText}>You haven't added any friends yet. Use the search bar above!</Text>
-                ) : null // Otherwise, one of the lists might be empty, but that's okay
+                ) : null 
            }
            contentContainerStyle={styles.listContainer}
          />
@@ -445,143 +462,154 @@ export default function ChatScreen() {
 
 // --- Styles ---
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#ffffffff' }, // Lighter grey background
+    container: { 
+        flex: 1, 
+        backgroundColor: '#F2F4F6' 
+    }, 
     header: { 
-        paddingVertical: 12, 
-        paddingHorizontal: 16, 
-        borderBottomWidth: 1, 
-        borderBottomColor: '#ffffffff',
-        backgroundColor: '#060606ff', // White header
+        paddingVertical: 16, 
+        paddingHorizontal: 20, 
+        backgroundColor: '#FFFFFF', 
+        borderBottomWidth: 1,
+        borderBottomColor: '#E5E5EA',
     },
-    title: { fontSize: 24, fontWeight: 'bold', textAlign: 'center' },
+    title: { 
+        fontSize: 28, 
+        fontWeight: '800', 
+        color: '#1C1C1E',
+        textAlign: 'left'
+    },
     
     searchContainer: { 
         flexDirection: 'row', 
         alignItems: 'center', 
-        backgroundColor: '#000000ff', // Changed from grey to white
-        borderRadius: 12,       // Softer radius
+        backgroundColor: '#FFFFFF', 
+        borderRadius: 12,       
         marginHorizontal: 16,
         marginTop: 16,
-        marginBottom: 8,
+        marginBottom: 12,
         paddingHorizontal: 12,
-        borderWidth: 1,
-        borderColor: '#e0e0e0', // Subtle border
-        // iOS Shadow
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
+        shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.05,
-        shadowRadius: 2,
-        // Android Shadow
+        shadowRadius: 3,
         elevation: 2,
     },
-    searchIcon: { marginRight: 8 },
+    searchIcon: { marginRight: 10 },
     searchInput: { 
         flex: 1, 
-        height: 48, // Taller for better tap target
+        height: 48, 
         fontSize: 16, 
-        color: '#f8f5f5ff' 
+        color: '#333' 
     },
     
     loader: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    listContainer: { paddingHorizontal: 16, paddingBottom: 40 }, // More bottom padding
+    listContainer: { 
+        paddingHorizontal: 16, 
+        paddingBottom: 40,
+        paddingTop: 8
+    },
 
-    // --- 5. Polished List Headers ---
     listHeader: { 
-        fontSize: 20,       // Larger
-        fontWeight: '700',  // Bolder
-        color: '#0a0909ff',     // Darker
-        marginTop: 24,    // More space
+        fontSize: 18,       
+        fontWeight: '700',  
+        color: '#666',     
+        marginTop: 16,    
         marginBottom: 12,
-        paddingHorizontal: 8 
+        marginLeft: 4,
+        textTransform: 'uppercase',
+        letterSpacing: 0.5
     },
     
-    // --- Polished Friend/Search Card ---
     userCard: { 
         flexDirection: 'row', 
         alignItems: 'center', 
-        paddingVertical: 14, // More vertical space
-        paddingHorizontal: 8,
-        backgroundColor: '#1a94bdff',
-        borderBottomWidth: 1, 
-        borderBottomColor: '#ffffffff' // Lighter border
+        paddingVertical: 16, 
+        paddingHorizontal: 16,
+        backgroundColor: '#FFFFFF', 
+        borderRadius: 16, 
+        marginBottom: 12, 
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.08,
+        shadowRadius: 6,
+        elevation: 3,
     },
-    userInfo: { flex: 1, marginLeft: 12 },
-    userName: { fontSize: 16, fontWeight: '600', marginBottom: 2 },
-    userGenres: { fontSize: 14, color: '#666' },
-    userActionText: { fontSize: 14, color: '#fafcfcff', fontWeight: '500' },
+    userInfo: { flex: 1, marginLeft: 16 },
+    userName: { 
+        fontSize: 16, 
+        fontWeight: '700', 
+        color: '#1C1C1E',
+        marginBottom: 4 
+    },
+    userGenres: { fontSize: 13, color: '#8E8E93' },
+    userActionText: { 
+        fontSize: 13, 
+        color: '#0a7ea4', 
+        fontWeight: '600',
+        marginTop: 2
+    },
 
-    // "Add Friend" Button (in search) ---
     addButton: {
-        padding: 8,
-        width: 40,
-        height: 40,
-        borderRadius: 20, // Circular
-        backgroundColor: '#000000ff', // Light blue background
+        padding: 10,
+        borderRadius: 20, 
+        backgroundColor: '#F0F8FF', 
         justifyContent: 'center',
         alignItems: 'center',
     },
-    // NEW: Unfriend button on the friend item
-    unfriendButton: {
+    optionsButton: {
         padding: 8,
         borderRadius: 20,
         justifyContent: 'center',
         alignItems: 'center',
+        width: 40,
+        backgroundColor: '#F9F9F9', 
     },
     
     emptyText: { 
         textAlign: 'center', 
-        marginTop: 30, 
+        marginTop: 40, 
         fontSize: 16, 
-        color: '#888', // Softer grey
-        paddingHorizontal: 20 
+        color: '#999', 
+        paddingHorizontal: 40,
+        lineHeight: 24
     },
     
-    // --- 2.  Friend Request "Card" ---
     requestCard: {
         flexDirection: 'row',
         alignItems: 'center',
-        padding: 12, // Consistent padding
-        backgroundColor: '#37364bff', // White card background
-        borderRadius: 10,       // Softer radius
-        marginBottom: 10,       // Space between cards
-        // iOS Shadow
-        shadowColor: '#282424ff',
+        padding: 16, 
+        backgroundColor: '#FFFFFF', 
+        borderRadius: 16,       
+        marginBottom: 12,       
+        shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.08,
-        shadowRadius: 3,
-        // Android Shadow
+        shadowRadius: 6,
         elevation: 3,
-        borderWidth: 1,
-        borderColor: '#f0f0f0', // Very light border
+        borderLeftWidth: 4, 
+        borderLeftColor: '#0a7ea4' 
     },
     requestInfo: {
         flex: 1,
-        marginLeft: 10,
+        marginLeft: 14,
     },
     requestActions: {
         flexDirection: 'row',
+        gap: 8
     },
 
-    // --- 3.  Accept/Decline Buttons ---
     requestButton: {
-        marginLeft: 10,     // More space between buttons
-        width: 36,          // Larger tap target
+        width: 36,          
         height: 36,
-        borderRadius: 18,   // Perfect circle
+        borderRadius: 18,   
         justifyContent: 'center',
         alignItems: 'center',
-        // iOS Shadow
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.15,
-        shadowRadius: 1,
-        // Android Shadow
-        elevation: 2,
     },
     acceptButton: {
-        backgroundColor: '#34C759', // Brighter, modern iOS green
+        backgroundColor: '#0fff87ff', 
     },
     declineButton: {
-        backgroundColor: '#f80e02ff', // Brighter, modern iOS red
+        backgroundColor: '#ff0000ff', 
     },
 });
