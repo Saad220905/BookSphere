@@ -1,6 +1,6 @@
 import { FontAwesome } from '@expo/vector-icons';
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, TextInput, Button, ScrollView, Platform, TouchableOpacity, KeyboardAvoidingView, Image, Alert } from 'react-native';
+import { StyleSheet, View, Text, TextInput, Button, ScrollView, Platform, TouchableOpacity, KeyboardAvoidingView, Image, Alert, Pressable } from 'react-native';
 import { Comment, toggleLike, deleteComment  } from '../utils/bookComments';
 import { UserProfile, getUserProfile } from '../utils/userProfile';
 
@@ -110,7 +110,10 @@ const CommentItem = ({ comment, bookId, currentUserId }: { comment: Comment, boo
   };
 
   return (
-    <View style={styles.commentItemContainer}>
+    <Pressable 
+        onLongPress={isOwner ? handleDelete : undefined} 
+        style={styles.commentItemContainer}
+    >
       <Image source={photoURL} style={styles.profilePic} />
 
       {/* Left side: user info and comment content */}
@@ -143,13 +146,13 @@ const CommentItem = ({ comment, bookId, currentUserId }: { comment: Comment, boo
             <Text style={styles.likeCount}>{comment.likeCount}</Text>
           )}
         </TouchableOpacity>
-        {isOwner && (
+        {/* {isOwner && (
           <TouchableOpacity onPress={handleDelete} style={styles.deleteButton}>
             <FontAwesome name="trash-o" size={15} color="#8e8e93" />
           </TouchableOpacity>
-        )}
+        )} */}
       </View>
-    </View>
+    </Pressable>
   );
 };
 
