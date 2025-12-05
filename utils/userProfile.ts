@@ -1,5 +1,5 @@
 import { User } from 'firebase/auth';
-import { doc, getDoc, setDoc, updateDoc, FirestoreError, Firestore } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, FirestoreError, Firestore, collection, query, where, getDocs, addDoc } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { FirebaseError } from 'firebase/app';
 
@@ -153,5 +153,53 @@ export async function updateUserProfile(uid: string, updates: Partial<UserProfil
       throw new UserProfileError(`Failed to update user profile: ${firebaseError.message}`, firebaseError.code);
     }
     throw new UserProfileError('Failed to update user profile');
+  }
+}
+
+export interface ReadingProgress {
+  currentPage: number;
+  totalPages: number;
+  lastUpdated: Date;
+}
+
+export async function saveReadingProgress(userId: string, bookId: string, currentPage: number, totalPages: number): Promise<void> {
+  if (!userId || !bookId) return;
+
+  const firestore = getFirestore();
+  // Collection path: users/{userId}/progress/{bookId}
+  const progressRef = doc(firestore, 'users', userId, 'progress', bookId);
+
+  try {
+    await retryOperation(() => setDoc(progressRef, {
+      currentPage: currentPage,
+      totalPages: totalPages,
+      lastUpdated: new Date(),
+    }, { merge: true })); // Use merge to avoid overwriting existing fields
+  } catch (error) {
+    console.error(`Failed to save progress for book ${bookId}:`, error);
+  }
+}
+
+export async function loadReadingProgress(userId: string, bookId: string): Promise<ReadingProgress | null> {
+  if (!userId || !bookId) return null;
+
+  const firestore = getFirestore();
+  const progressRef = doc(firestore, 'users', userId, 'progress', bookId);
+
+  try {
+    const docSnap = await retryOperation(() => getDoc(progressRef));
+
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      return {
+        currentPage: data.currentPage,
+        totalPages: data.totalPages,
+        lastUpdated: data.lastUpdated instanceof Date ? data.lastUpdated : new Date(), 
+      } as ReadingProgress;
+    }
+    return null;
+  } catch (error) {
+    console.error(`Failed to load progress for book ${bookId}:`, error);
+    return null;
   }
 }
