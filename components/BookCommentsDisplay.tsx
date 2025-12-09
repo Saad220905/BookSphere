@@ -146,11 +146,6 @@ const CommentItem = ({ comment, bookId, currentUserId }: { comment: Comment, boo
             <Text style={styles.likeCount}>{comment.likeCount}</Text>
           )}
         </TouchableOpacity>
-        {/* {isOwner && (
-          <TouchableOpacity onPress={handleDelete} style={styles.deleteButton}>
-            <FontAwesome name="trash-o" size={15} color="#8e8e93" />
-          </TouchableOpacity>
-        )} */}
       </View>
     </Pressable>
   );
