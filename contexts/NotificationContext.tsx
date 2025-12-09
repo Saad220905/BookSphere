@@ -5,14 +5,14 @@ import { useAuth } from './AuthContext';
 
 interface Notification {
   id: string;
-  type: 'like' | 'comment' | 'club_invite' | 'club_update' | 'new_video' | 'new_recommendation';
+  type: 'like' | 'comment' | 'club_invite' | 'club_update' | 'new_video' | 'new_recommendation' | 'friend_request';
   title: string;
   message: string;
   userId: string;
   targetId?: string;
-  targetType?: 'video' | 'club' | 'comment' | 'book';
+  targetType?: 'video' | 'club' | 'comment' | 'book' | 'user';
   fromUserId?: string;
-  fromUserDisplayName?: string;
+  fromUserDisplayName?: string | null;
   fromUserPhotoURL?: string | null;
   read: boolean;
   createdAt: any;

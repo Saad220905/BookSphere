@@ -17,6 +17,7 @@ import UserAvatar from '../../components/UserAvatar';
 import { db } from '../../config/firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import { UserProfile, getUserProfile } from '../../utils/userProfile'; // Ensure UserProfile includes favoriteGenres and friends
+import { useNotifications } from '../../contexts/NotificationContext';
 
 // Interface for Friend Request documents in Firestore
 interface FriendRequest {
@@ -42,6 +43,7 @@ export default function ChatScreen() {
   const [friendsDataChangeCounter, setFriendsDataChangeCounter] = useState(0); 
 
   const { user } = useAuth();
+  const { createNotification } = useNotifications();
   const firestoreDb = db as Firestore;
 
   // --- Fetch All Users (excluding self) ---
@@ -178,6 +180,18 @@ export default function ChatScreen() {
                    toUserId: targetUser.uid,
                    status: 'pending',
                    createdAt: serverTimestamp(),
+                 });
+
+                 await createNotification({
+                     type: 'friend_request' as any, // Needs type assertion if 'friend_request' isn't explicitly defined
+                     title: 'New Friend Request',
+                     message: `${user.displayName} sent you a friend request.`,
+                     userId: targetUser.uid, // Notify the recipient
+                     targetType: 'user', 
+                     targetId: user.uid,     // Target the sender's profile
+                     fromUserId: user.uid,
+                     fromUserDisplayName: user.displayName,
+                     fromUserPhotoURL: user.photoURL,
                  });
                  Alert.alert('Request Sent!', `Friend request sent to ${targetUser.displayName || 'this user'}.`);
              } catch (error) {
