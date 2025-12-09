@@ -42,9 +42,9 @@ export function calculateAggregateSentiment(comments: Comment[]): 'Positive' | '
   let validCount = 0;
 
   const sentimentWeights: { [key: string]: number } = {
-    'Positive': 2,
+    'Positive': 5,
     'Neutral': 0,
-    'Negative': -2,
+    'Negative': -5,
     'AnalysisError': 0, // Errors don't influence the page score
   };
 
@@ -64,14 +64,14 @@ export function calculateAggregateSentiment(comments: Comment[]): 'Positive' | '
   const averageScore = totalScore / validCount;
 
   // 3. Map score to final sentiment string
-  if (averageScore > 1.0) {
+  if (averageScore > 0.3) {
     return 'Positive';
-  } else if (averageScore < -1.0) {
+  } else if (averageScore < -0.3) {
     return 'Negative';
-  } else if (Math.abs(averageScore) <= 0.5) {
+  } else if (Math.abs(averageScore) <= 0.1) { //Only VERY close to zero is neutral
     return 'Neutral';
   } else {
-    return 'Mixed'; // A mix of strong positive and negative comments
+    return 'Mixed'; // A mix between -1.0 and 1.0 excluding neutral
   }
 }
 
