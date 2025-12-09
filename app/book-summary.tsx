@@ -60,14 +60,23 @@ export default function BookSummaryScreen() {
     });
   };
 
-  // Helper to determine the color/icon
+  // Helper to determine the color/icon and the container background for better UX
   const getSentimentStyle = (sentiment: string) => {
     switch (sentiment) {
-      case 'Positive': return { color: '#4CAF50', emoji: '😊' }; // Green
-      case 'Negative': return { color: '#F44336', emoji: '😔' }; // Red
-      case 'Mixed': return { color: '#FF9800', emoji: '🤨' }; // Orange
-      case 'Neutral': return { color: '#2196F3', emoji: '😐' }; // Blue
-      default: return { color: '#777', emoji: '...' };
+        // Light Green for Positive
+        case 'Positive': return { color: '#1B5E20', backgroundColor: '#C8E6C9', emoji: '😊' }; 
+        // Light Red for Negative
+        case 'Negative': return { color: '#B71C1C', backgroundColor: '#FFCDD2', emoji: '😔' }; 
+        // Light Grey for Mixed
+        case 'Mixed': return { color: '#37474F', backgroundColor: '#CFD8DC', emoji: '🤨' }; 
+        // Light Yellow for Neutral/No Comments/Error
+        case 'Neutral': 
+        case 'No Comments':
+        case 'Analysis Error':
+            return { color: '#5D4037', backgroundColor: '#FFF9C4', emoji: '😐' }; 
+        case 'Loading...': 
+        default: 
+            return { color: '#777', backgroundColor: '#F0F0F0', emoji: '...' };
     }
   };
 
@@ -80,6 +89,26 @@ export default function BookSummaryScreen() {
     <SafeAreaView style={styles.container}>
       <Stack.Screen options={{ title: "Book Details", headerShown: true }} />
       <ScrollView contentContainerStyle={styles.scrollContainer}>
+        <View style={[styles.topBanner, { backgroundColor: sentimentDisplay.backgroundColor }]}>
+            {overallSentiment === 'Loading...' ? (
+                <ActivityIndicator size="small" color={sentimentDisplay.color} />
+            ) : overallSentiment === 'No Comments' ? (
+                <Text style={{ color: sentimentDisplay.color, fontSize: 16 }}>
+                    No Comments Yet — Try submitting the first one!
+                </Text>
+            ) : overallSentiment === 'Analysis Error' ? (
+                <Text style={{ color: sentimentDisplay.color, fontSize: 16 }}>
+                    Analysis Error
+                </Text>
+            ) : (
+                <Text style={[styles.sentimentText, { color: sentimentDisplay.color }]}>
+                    Overall Reader Sentiment: {sentimentDisplay.emoji} {overallSentiment}
+                </Text>
+            )}
+        </View>
+
+        {/* END NEW SENTIMENT BANNER */}
+        
         <View style={styles.coverContainer}>
           {coverLoading && <ActivityIndicator style={StyleSheet.absoluteFill} color="#ccc" />}
           <Image
@@ -99,7 +128,7 @@ export default function BookSummaryScreen() {
         <Text style={styles.author}>by {author || 'Unknown Author'}</Text>
         <Text style={styles.publishYear}>First published: {publish_year || 'N/A'}</Text>
 
-        {/* NEW SENTIMENT DISPLAY SECTION */}
+        {/* NEW SENTIMENT DISPLAY SECTION
         <View style={styles.sentimentBox}>
             <Text style={styles.sentimentLabel}>Overall Reader Sentiment:</Text>
             {overallSentiment === 'Loading...' ? (
@@ -111,7 +140,7 @@ export default function BookSummaryScreen() {
                     {sentimentDisplay.emoji} {overallSentiment}
                 </Text>
             )}
-        </View>
+        </View> */}
 
         {/* Read button */}
         <View style={styles.buttonContainer}>
@@ -179,29 +208,19 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontSize: 16,
   },
-  // NEW SENTIMENT STYLES
-  sentimentBox: {
-    padding: 15,
-    borderRadius: 8,
-    backgroundColor: '#fff',
+  // NEW SENTIMENT STYLES (replaced sentimentBox with topBanner for better UX)
+  topBanner: {
     width: '100%',
+    padding: 12,
     alignItems: 'center',
-    marginVertical: 15,
+    justifyContent: 'center',
+    marginBottom: 20, // Space between banner and image
+    borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#eee',
-  },
-  sentimentLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 8,
+    borderColor: 'rgba(0, 0, 0, 0.1)',
   },
   sentimentText: {
-    fontSize: 24,
+    fontSize: 14,
     fontWeight: 'bold',
-  },
-  noCommentsText: {
-    fontSize: 16,
-    color: '#999',
   }
 });
