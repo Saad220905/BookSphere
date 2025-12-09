@@ -227,9 +227,11 @@ export default function BookScreen() {
   if (error) {
     return (
       <SafeAreaView style={styles.container}>
-        {
-        //<ErrorState message={error} onRetry={loadBookData} />
-    }
+        <EmptyState
+          icon="exclamation-triangle"
+          title="Error"
+          message={error}
+        />
       </SafeAreaView>
     );
   }
