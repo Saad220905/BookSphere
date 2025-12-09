@@ -1,6 +1,6 @@
 import { FontAwesome } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { collection, doc, getDoc, getDocs, orderBy, query, updateDoc, addDoc, serverTimestamp, setDoc, Firestore } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, orderBy, query, updateDoc, addDoc, serverTimestamp, setDoc, Firestore, Timestamp } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import { FlatList, StyleSheet, TouchableOpacity, View, Modal, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -9,6 +9,7 @@ import UserAvatar from '../../components/UserAvatar';
 import { db } from '../../config/firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import { getUserProfile, UserProfile } from '../../utils/userProfile';
+import { rankPosts, FeedPost as RankedFeedPost } from '../../utils/postRanking';
 import CreatePostModal from '../create/CreatePostModal';
 import CommentsModal from '../create/CommentsModal';
 
@@ -20,15 +21,18 @@ interface FeedPost {
   userPhotoURL?: string;
   bookTitle?: string;
   bookAuthor?: string;
+  genre?: string;
   likes: number;
   comments: number;
   createdAt: any;
   likedBy: string[];
+  score?: number;
 }
 
 export default function FeedScreen() {
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const [loading, setLoading] = useState(true);
+  const [currentUserProfile, setCurrentUserProfile] = useState<UserProfile | null>(null);
   const { user } = useAuth();
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
@@ -39,23 +43,56 @@ export default function FeedScreen() {
   const [loadingFriends, setLoadingFriends] = useState(false);
 
   useEffect(() => {
-    loadPosts();
-  }, []);
+    if (user) {
+      loadUserProfile();
+    }
+  }, [user]);
+
+  useEffect(() => {
+    if (currentUserProfile && user) {
+      loadPosts();
+    }
+  }, [currentUserProfile, user]);
+
+  const loadUserProfile = async () => {
+    if (!user) return;
+    try {
+      const profile = await getUserProfile(user.uid);
+      setCurrentUserProfile(profile);
+    } catch (error) {
+      console.error('Error loading user profile:', error);
+    }
+  };
 
   const loadPosts = async () => {
     try {
       setLoading(true);
       if (!db) return;
 
+      // Load posts (limit to 100 for performance, rank them)
       const postsQuery = query(
         collection(db, 'posts'),
         orderBy('createdAt', 'desc')
       );
       const snapshot = await getDocs(postsQuery);
-      const postsData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as FeedPost[];
+      let postsData = snapshot.docs
+        .slice(0, 100) // Limit to 100 posts for performance
+        .map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+        })) as FeedPost[];
+
+      // Rank posts using the recommendation algorithm
+      if (user && currentUserProfile) {
+        const friendIds = currentUserProfile.friends || [];
+        const ranked = await rankPosts(
+          postsData as RankedFeedPost[],
+          currentUserProfile,
+          friendIds
+        );
+
+        postsData = ranked as FeedPost[];
+      }
       
       setPosts(postsData);
     } catch (error) {
@@ -198,7 +235,11 @@ export default function FeedScreen() {
           <View style={styles.postInfo}>
             <Text style={styles.userName}>{item.userDisplayName}</Text>
             <Text style={styles.postTime}>
-              {item.createdAt?.toDate().toLocaleDateString()}
+              {item.createdAt && (item.createdAt instanceof Timestamp || typeof item.createdAt?.toDate === 'function') 
+                ? item.createdAt.toDate().toLocaleDateString() 
+                : item.createdAt instanceof Date 
+                  ? item.createdAt.toLocaleDateString()
+                  : 'Unknown date'}
             </Text>
           </View>
         </View>
@@ -304,7 +345,7 @@ export default function FeedScreen() {
               </View>
             ) : friends.length === 0 ? (
               <View style={styles.shareModalEmpty}>
-                <FontAwesome name="user-friends" size={48} color="#ccc" />
+                <FontAwesome name="map" size={48} color="#ccc" />
                 <Text style={styles.shareModalEmptyText}>No friends yet</Text>
                 <Text style={styles.shareModalEmptySubtext}>
                   Add friends to share posts with them

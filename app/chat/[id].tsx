@@ -570,9 +570,17 @@ export default function PrivateChatScreen() {
     const isCurrentUser = item.senderId === user?.uid;
     const anim = messageAnimValues.current.get(item.id) || new Animated.Value(1);
     
-    const currentMessageDate = item.createdAt?.toDate() || null;
+    const currentMessageDate = item.createdAt && (item.createdAt instanceof Timestamp || typeof item.createdAt?.toDate === 'function')
+      ? item.createdAt.toDate()
+      : item.createdAt instanceof Date
+        ? item.createdAt
+        : null;
     const nextItem = messages[index + 1];
-    const previousMessageDate = nextItem?.createdAt?.toDate() || null;
+    const previousMessageDate = nextItem?.createdAt && (nextItem.createdAt instanceof Timestamp || typeof nextItem.createdAt?.toDate === 'function')
+      ? nextItem.createdAt.toDate()
+      : nextItem?.createdAt instanceof Date
+        ? nextItem.createdAt
+        : null;
     
     // Logic for showing Date Header only on initial message or time gap > 2 hours.
     let showDateHeader = index === messages.length - 1; 
