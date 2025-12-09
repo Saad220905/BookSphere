@@ -293,109 +293,108 @@ const styles = StyleSheet.create({
 		fontWeight: 'bold', 
 		flex: 1 
 	},
-  	section: { 
+  section: { 
 		marginBottom: 30 
 	},
-  	sectionTitle: { 
+  sectionTitle: { 
 		fontSize: 18, 
 		fontWeight: '600', 
 		marginBottom: 10 
 	},
-  	searchInput: {
-    		height: 40,
-    		borderColor: '#ddd',
-    		borderWidth: 1,
-    		borderRadius: 8,
-    		paddingHorizontal: 15,
-    		marginBottom: 15,
-    		fontSize: 16,
-  	},
-  
-  	pickerContainer: {
-    		backgroundColor: '#f8f9fa',
-    		borderRadius: 10,
-    		padding: 10,
-    		maxHeight: 250, 
-    		borderWidth: 1,
-    		borderColor: '#f0f0f0',
-  	},
-  	bookListScrollView: { 
-      		maxHeight: 230,
-  	},
-  	loadingIndicator: { 
-      		padding: 20 
-  	},
-  	itemButton: { 
+  searchInput: {
+    height: 40,
+    borderColor: '#ddd',
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 15,
+    marginBottom: 15,
+    fontSize: 16,
+  },
+  pickerContainer: {
+  	backgroundColor: '#f8f9fa',
+  	borderRadius: 10,
+  	padding: 10,
+  	maxHeight: 250, 
+  	borderWidth: 1,
+  	borderColor: '#f0f0f0',
+  },
+  bookListScrollView: { 
+  	maxHeight: 230,
+  },
+  loadingIndicator: { 
+  	padding: 20 
+  },
+  itemButton: { 
 		padding: 12, 
 		borderBottomWidth: 1, 
 		borderBottomColor: '#eee' 
 	},
-  	selectedItem: { 
+  selectedItem: { 
 		backgroundColor: '#e6f7ff', 
 		borderRadius: 5 
 	},
-  	selectedText: { 
+  selectedText: { 
 		color: '#0a7ea4', 
 		fontWeight: 'bold' 
 	},
-  	emptyListText: { 
+  emptyListText: { 
 		padding: 12, 
 		textAlign: 'center', 
 		color: '#666' 
 	},
-  	noteInput: {
-    		height: 100,
-    		borderColor: '#ccc',
-    		borderWidth: 1,
-    		borderRadius: 8,
-    		padding: 10,
-    		textAlignVertical: 'top',
-    		fontSize: 16,
-  	},
-  	confirmationBox: {
-    		marginTop: 20,
-    		padding: 15,
-    		backgroundColor: '#f0f8ff',
-    		borderRadius: 10,
-    		borderLeftWidth: 4,
-    		borderLeftColor: '#0a7ea4',
-  	},
-  	confirmationText: { 
+  noteInput: {
+  	height: 100,
+  	borderColor: '#ccc',
+  	borderWidth: 1,
+  	borderRadius: 8,
+  	padding: 10,
+  	textAlignVertical: 'top',
+  	fontSize: 16,
+  },
+  confirmationBox: {
+  	marginTop: 20,
+  	padding: 15,
+  	backgroundColor: '#f0f8ff',
+  	borderRadius: 10,
+  	borderLeftWidth: 4,
+  	borderLeftColor: '#0a7ea4',
+  },
+  confirmationText: { 
 		fontSize: 16, 
 		marginBottom: 10, 
 		lineHeight: 24 
 	},
-  	notePreview: { 
+  notePreview: { 
 		fontSize: 14, 
 		fontStyle: 'italic', 
 		color: '#333', 
 		marginBottom: 15 
 	},
-  	sendButton: {
-    		backgroundColor: '#0a7ea4',
-    		padding: 15,
-    		borderRadius: 10,
-    		alignItems: 'center',
-    		flexDirection: 'row',
-    		justifyContent: 'center',
-    		marginTop: 10,
-  	},
-  	sendButtonText: { 
+  sendButton: {
+  	backgroundColor: '#0a7ea4',
+  	padding: 15,
+  	borderRadius: 10,
+  	alignItems: 'center',
+  	flexDirection: 'row',
+  	justifyContent: 'center',
+  	marginTop: 10,
+  },
+  sendButtonText: { 
 		color: '#fff', 
 		fontSize: 18, 
 		fontWeight: 'bold' 
 	},
-  	loadingContainer: { 
+  loadingContainer: { 
 		flex: 1, 
 		justifyContent: 'center', 
 		alignItems: 'center' 
 	},
-  	goBackButton: { 
+  goBackButton: { 
 		backgroundColor: '#0a7ea4', 
 		padding: 10, 
 		borderRadius: 8 
 	},
-  	goBackText: { 
+  goBackText: { 
 		color: '#fff', 
 		fontWeight: '600' 
 	},
