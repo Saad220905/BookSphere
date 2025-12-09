@@ -16,8 +16,6 @@ interface Book {
   author: string;
 }
 
-type SearchMode = 'title' | 'author';
-
 const RECOMMENDATION_COLLECTION = 'recommendations';
 const OPEN_LIBRARY_SEARCH_URL = 'https://openlibrary.org/search.json?'; 
 
@@ -36,40 +34,21 @@ export default function SendRecommendationScreen() {
   const [isSending, setIsSending] = useState(false);
   const [isSearching, setIsSearching] = useState(false); 
   const [searchTerm, setSearchTerm] = useState(''); 
-  const [searchMode, setSearchMode] = useState<SearchMode>('title');
 
-  const searchOpenLibrary = useCallback(async (queryTerm: string, mode: SearchMode) => {
+  const searchOpenLibrary = useCallback(async (queryTerm: string) => {
     if (queryTerm.length === 0) {
-        setBooks([]);
-        setSelectedBook(null);
-        return;
+      setBooks([]);
+      setSelectedBook(null);
+      return;
     }
     
     setIsSearching(true);
-    
-    let apiQuery: string;
-    
-    // Construct the query string based on the active mode (already correctly targets OL API)
-    if (mode === 'title') {
-        apiQuery = `title:${queryTerm}`;
-    } else {
-        apiQuery = `author:${queryTerm}`;
-    }
 
     try {
-      // API call remains the same...
-      const url = `${OPEN_LIBRARY_SEARCH_URL}q=${encodeURIComponent(apiQuery)}&limit=15&language=eng&has_fulltext=true`;
+      const url = `${OPEN_LIBRARY_SEARCH_URL}q=${encodeURIComponent(queryTerm)}&limit=15&subject=public_domain`;
       const response = await fetch(url);
       
-      if (!response.ok) {
-        // Suppress alert for short queries
-        if (queryTerm.length > 2) {
-             throw new Error(`HTTP error! status: ${response.status}`);
-        } else {
-            console.error(`API returned error for short query (${queryTerm.length}): ${response.status}`);
-            throw new Error("Short query failed silently."); 
-        }
-      }
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
       
       const data = await response.json();
 
@@ -81,47 +60,70 @@ export default function SendRecommendationScreen() {
           author: doc.author_name[0] || 'Unknown Author', 
         }));
         
-      if (mode === 'author') {
-          newBooks.sort((a, b) => a.author.localeCompare(b.author));
-      } else {
-          newBooks.sort((a, b) => a.title.localeCompare(b.title));
-      }
+      newBooks.sort((a, b) => a.title.localeCompare(b.title));
 
       setBooks(newBooks);
       setSelectedBook(newBooks[0] || null); 
 
-    } catch (error: any) {
-        if (!error.message.includes("Short query failed silently")) {
-            console.error("Error searching OpenLibrary:", error);
-            Alert.alert("Error", "Could not fetch books. Please simplify your search.");
-        }
-        setBooks([]);
-        setSelectedBook(null);
+    } catch (error) {
+      console.error("Error searching OpenLibrary:", error);
+      Alert.alert("Error", "Failed to search books.");
+      setBooks([]);
+      setSelectedBook(null);
     } finally {
       setIsSearching(false);
     }
   }, []);
 
   useEffect(() => {
-    let queryToRun = searchTerm.trim();
-    
-    if (queryToRun.length === 0) {
-        queryToRun = "title:a"; 
-    }
-
-    const handler = setTimeout(() => {
-        if (queryToRun.length > 0) {
-            searchOpenLibrary(queryToRun, searchMode);
-        } else {
+    let queryToUse = searchTerm.length > 0 ? searchTerm : "classic"; 
+    const controller = new AbortController();
+    const executeSearch = async () => {
+        if (queryToUse.length === 0) {
             setBooks([]);
             setSelectedBook(null);
+            return;
         }
-    }, searchTerm.length > 0 ? 300 : 0); 
+        
+        setIsSearching(true);
+        
+        try {
+            const url = `${OPEN_LIBRARY_SEARCH_URL}q=${encodeURIComponent(queryToUse)}&limit=15&subject=public_domain`;
+            const response = await fetch(url, { signal: controller.signal }); // Use signal for cleanup
+            
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            
+            const data = await response.json();
+
+            let newBooks: Book[] = data.docs
+                .filter((doc: any) => doc.author_name && doc.title && doc.key)
+                .map((doc: any) => ({
+                    id: doc.key, 
+                    title: doc.title,
+                    author: doc.author_name[0] || 'Unknown Author', 
+                }));
+                
+            newBooks.sort((a, b) => a.title.localeCompare(b.title));
+
+            setBooks(newBooks);
+            setSelectedBook(newBooks[0] || null); 
+
+        } catch (error: any) {
+            if (error.name !== 'AbortError') {
+                 console.error("Error fetching books:", error);
+            }
+        } finally {
+            setIsSearching(false);
+        }
+    };
+    
+    executeSearch();
 
     return () => {
-        clearTimeout(handler);
+        controller.abort();
     };
-  }, [searchTerm, searchMode, searchOpenLibrary]);
+
+  }, [searchTerm]);
 
   const handleSendRecommendation = async () => {
     if (isSending || !selectedBook || !user?.uid || !recipientId) {
@@ -213,21 +215,6 @@ export default function SendRecommendationScreen() {
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>1. Select Book</Text>
-
-          <View style={styles.searchModeContainer}>
-            <TouchableOpacity 
-              style={[styles.modeButton, searchMode === 'title' && styles.activeMode]}
-              onPress={() => setSearchMode('title')}
-            >
-              <Text style={[styles.modeText, searchMode === 'title' && styles.activeModeText]}>Search by Book</Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={[styles.modeButton, searchMode === 'author' && styles.activeMode]}
-              onPress={() => setSearchMode('author')}
-            >
-              <Text style={[styles.modeText, searchMode === 'author' && styles.activeModeText]}>Search by Author</Text>
-            </TouchableOpacity>
-          </View>
           
           <TextInput
             style={styles.searchInput}
@@ -280,37 +267,6 @@ export default function SendRecommendationScreen() {
 }
 
 const styles = StyleSheet.create({
-  searchModeContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 10,
-    backgroundColor: '#f0f0f0',
-    borderRadius: 8,
-    padding: 3,
-  },
-  modeButton: {
-    flex: 1,
-    paddingVertical: 8,
-    borderRadius: 6,
-    alignItems: 'center',
-  },
-  modeText: {
-    fontSize: 14,
-    color: '#666',
-    fontWeight: '500',
-  },
-  activeMode: {
-    backgroundColor: '#fff', // White background for selected mode
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 1,
-    elevation: 2,
-  },
-  activeModeText: {
-    color: '#0a7ea4',
-    fontWeight: '600',
-  },
 	container: { 
 		flex: 1, 
 		backgroundColor: '#fff' 
@@ -337,109 +293,108 @@ const styles = StyleSheet.create({
 		fontWeight: 'bold', 
 		flex: 1 
 	},
-  	section: { 
+  section: { 
 		marginBottom: 30 
 	},
-  	sectionTitle: { 
+  sectionTitle: { 
 		fontSize: 18, 
 		fontWeight: '600', 
 		marginBottom: 10 
 	},
-  	searchInput: {
-    		height: 40,
-    		borderColor: '#ddd',
-    		borderWidth: 1,
-    		borderRadius: 8,
-    		paddingHorizontal: 15,
-    		marginBottom: 15,
-    		fontSize: 16,
-  	},
-  
-  	pickerContainer: {
-    		backgroundColor: '#f8f9fa',
-    		borderRadius: 10,
-    		padding: 10,
-    		maxHeight: 250, 
-    		borderWidth: 1,
-    		borderColor: '#f0f0f0',
-  	},
-  	bookListScrollView: { 
-      		maxHeight: 230,
-  	},
-  	loadingIndicator: { 
-      		padding: 20 
-  	},
-  	itemButton: { 
+  searchInput: {
+    height: 40,
+    borderColor: '#ddd',
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 15,
+    marginBottom: 15,
+    fontSize: 16,
+  },
+  pickerContainer: {
+  	backgroundColor: '#f8f9fa',
+  	borderRadius: 10,
+  	padding: 10,
+  	maxHeight: 250, 
+  	borderWidth: 1,
+  	borderColor: '#f0f0f0',
+  },
+  bookListScrollView: { 
+  	maxHeight: 230,
+  },
+  loadingIndicator: { 
+  	padding: 20 
+  },
+  itemButton: { 
 		padding: 12, 
 		borderBottomWidth: 1, 
 		borderBottomColor: '#eee' 
 	},
-  	selectedItem: { 
+  selectedItem: { 
 		backgroundColor: '#e6f7ff', 
 		borderRadius: 5 
 	},
-  	selectedText: { 
+  selectedText: { 
 		color: '#0a7ea4', 
 		fontWeight: 'bold' 
 	},
-  	emptyListText: { 
+  emptyListText: { 
 		padding: 12, 
 		textAlign: 'center', 
 		color: '#666' 
 	},
-  	noteInput: {
-    		height: 100,
-    		borderColor: '#ccc',
-    		borderWidth: 1,
-    		borderRadius: 8,
-    		padding: 10,
-    		textAlignVertical: 'top',
-    		fontSize: 16,
-  	},
-  	confirmationBox: {
-    		marginTop: 20,
-    		padding: 15,
-    		backgroundColor: '#f0f8ff',
-    		borderRadius: 10,
-    		borderLeftWidth: 4,
-    		borderLeftColor: '#0a7ea4',
-  	},
-  	confirmationText: { 
+  noteInput: {
+  	height: 100,
+  	borderColor: '#ccc',
+  	borderWidth: 1,
+  	borderRadius: 8,
+  	padding: 10,
+  	textAlignVertical: 'top',
+  	fontSize: 16,
+  },
+  confirmationBox: {
+  	marginTop: 20,
+  	padding: 15,
+  	backgroundColor: '#f0f8ff',
+  	borderRadius: 10,
+  	borderLeftWidth: 4,
+  	borderLeftColor: '#0a7ea4',
+  },
+  confirmationText: { 
 		fontSize: 16, 
 		marginBottom: 10, 
 		lineHeight: 24 
 	},
-  	notePreview: { 
+  notePreview: { 
 		fontSize: 14, 
 		fontStyle: 'italic', 
 		color: '#333', 
 		marginBottom: 15 
 	},
-  	sendButton: {
-    		backgroundColor: '#0a7ea4',
-    		padding: 15,
-    		borderRadius: 10,
-    		alignItems: 'center',
-    		flexDirection: 'row',
-    		justifyContent: 'center',
-    		marginTop: 10,
-  	},
-  	sendButtonText: { 
+  sendButton: {
+  	backgroundColor: '#0a7ea4',
+  	padding: 15,
+  	borderRadius: 10,
+  	alignItems: 'center',
+  	flexDirection: 'row',
+  	justifyContent: 'center',
+  	marginTop: 10,
+  },
+  sendButtonText: { 
 		color: '#fff', 
 		fontSize: 18, 
 		fontWeight: 'bold' 
 	},
-  	loadingContainer: { 
+  loadingContainer: { 
 		flex: 1, 
 		justifyContent: 'center', 
 		alignItems: 'center' 
 	},
-  	goBackButton: { 
+  goBackButton: { 
 		backgroundColor: '#0a7ea4', 
 		padding: 10, 
 		borderRadius: 8 
 	},
-  	goBackText: { 
+  goBackText: { 
 		color: '#fff', 
 		fontWeight: '600' 
 	},
