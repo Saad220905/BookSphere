@@ -62,6 +62,7 @@ export default function FriendsListScreen() {
             );
 
             const friends = (await Promise.all(friendPromises)).filter((p): p is FriendProfile => p !== null);
+            friends.sort((a, b) => a.displayName.localeCompare(b.displayName));
             setFriendsListDetails(friends);
 
         } catch (error) {
