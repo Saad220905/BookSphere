@@ -9,6 +9,10 @@ import { auth } from '../config/firebase';
 import BookCommentsDisplay from './BookCommentsDisplay';
 import { listenForComments, addComment , Comment , PageSentiment } from '../utils/bookComments';
 
+//Progress import
+import { saveReadingProgress, loadReadingProgress } from '../utils/userProfile'; 
+
+
 const CommentIcon = () => (
   <FontAwesome name="comment" size={20} color="#8e8e93" />
 );
@@ -36,6 +40,8 @@ export default function PdfViewer({ source, bookId, onPageChanged, isNightMode, 
   const [totalPages, setTotalPages] = useState<number>(0);
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [initialPage, setInitialPage] = useState<number>(1);
+
 
   // Comment stuff
   const [comments, setComments] = useState<Comment[]>([]);
@@ -48,6 +54,18 @@ export default function PdfViewer({ source, bookId, onPageChanged, isNightMode, 
   const currentUserId = auth.currentUser?.uid || 'anonymous_user';
   const [pageSentiment, setPageSentiment] = useState<PageSentiment>('Neutral');
   
+  useEffect(() => {
+    // Only fetch saved page if we have a valid user and book
+    if (currentUserId !== 'anonymous_user' && bookId) {
+      loadReadingProgress(currentUserId, bookId).then(progress => {
+        if (progress?.currentPage) {
+          console.log(`Resuming reading at page ${progress.currentPage}`);
+          setInitialPage(progress.currentPage); // Set the start page
+        }
+      });
+    }
+  }, [bookId, currentUserId]);
+
   useEffect(() => {
     if (!bookId || !currentPage) return;
 
@@ -83,6 +101,7 @@ export default function PdfViewer({ source, bookId, onPageChanged, isNightMode, 
       <View style={styles.pdfViewContainer}>
         <Pdf
           source={source}
+          page={initialPage}
           enablePaging={true}
           trustAllCerts={false}
           horizontal={true}
@@ -91,9 +110,11 @@ export default function PdfViewer({ source, bookId, onPageChanged, isNightMode, 
             setTotalPages(numberOfPages);
             setIsLoading(false);
             updateBookPageCount(bookId, numberOfPages); 
+            saveReadingProgress(currentUserId, bookId, currentPage, numberOfPages); 
           }}
           onPageChanged={(page: number, numberOfPages: number) => {
             console.log(`Page turned: ${page}`) // DEBUG : remove later
+            saveReadingProgress(currentUserId, bookId, page, numberOfPages); 
             setCurrentPage(page);
             if (onPageChanged) {
               onPageChanged(page, numberOfPages);
