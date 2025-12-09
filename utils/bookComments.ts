@@ -1,4 +1,4 @@
-import { collection, query, where, onSnapshot, addDoc, serverTimestamp, Firestore, doc, runTransaction, arrayUnion, arrayRemove, increment, getDocs } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, addDoc, serverTimestamp, Firestore, doc, runTransaction, arrayUnion, arrayRemove, increment, getDocs, deleteDoc } from 'firebase/firestore';
 import { db } from '../config/firebase'; 
 import { GoogleGenAI } from '@google/genai';
 import { geminiConfig } from 'config/environment';
@@ -13,6 +13,7 @@ export interface Comment {
   likeCount: number; 
   likedBy: string[];  
   sentiment: 'Positive' | 'Negative' | 'Neutral' | 'AnalysisError';
+  isSpoiler: boolean;
 }
 
 class CommentError extends Error {
@@ -93,6 +94,7 @@ export function listenForComments(bookId: string, page: number, callback: (comme
         likeCount: data.likeCount || 0,
         likedBy: data.likedBy || [],
         sentiment: data.sentiment as Comment['sentiment'] || 'AnalysisError',
+        isSpoiler: data.isSpoiler || false,
       } as Comment);
     });
     // Sort by likes then creation time
@@ -146,7 +148,7 @@ export async function calculateOverallBookSentiment(bookId: string): Promise<'Po
 
 
 //////////////////////////////////////////////////////////////////////////////////////////////
-export async function addComment(bookId: string, page: number, text: string, userId: string) {
+export async function addComment(bookId: string, page: number, text: string, userId: string, isSpoiler: boolean) {
   const firestore = getFirestoreInstance();
   const commentsRef = collection(firestore, `books/${bookId}/comments`);
 
@@ -204,6 +206,7 @@ export async function addComment(bookId: string, page: number, text: string, use
     likedBy: [],
     // --- 3. SAVE COMMENT AND SENTIMENT TO FIRESTORE ---
     sentiment: sentimentResult,
+    isSpoiler: isSpoiler,
   });
 }
 
@@ -237,5 +240,16 @@ export async function toggleLike(bookId:string, commentId: string, userId: strin
   } catch (e) {
     console.error("Like transaction failed: ", e);
     throw new CommentError("Could not update like status.");
+  }
+}
+
+export async function deleteComment(bookId: string, commentId: string): Promise<void> {
+  const firestore = getFirestoreInstance();
+  const commentRef = doc(firestore, `books/${bookId}/comments`, commentId);
+
+  try {
+    await deleteDoc(commentRef);
+  } catch (e) {
+    throw new CommentError("Could not delete comment.");
   }
 }

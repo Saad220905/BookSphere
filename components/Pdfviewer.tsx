@@ -19,7 +19,7 @@ const CommentIcon = () => (
 
 const NightModeToggleIcon = ({ active }: { active: boolean }) => (
   <FontAwesome 
-    name={active ? "moon-o" : "sun-o"} 
+    name={"lightbulb-o"} 
     size={24} 
     color={active ? "#FFD700" : "#8e8e93"} 
   />
