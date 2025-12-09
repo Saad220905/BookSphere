@@ -178,17 +178,17 @@ export default function ChatScreen() {
                  });
 
                 //  // --- NOTIFICATION TRIGGER ---
-                //  await createNotification({
-                //    type: 'friend_request',
-                //    title: 'New Friend Request',
-                //    message: `${user.displayName || 'User'} sent you a friend request.`,
-                //    userId: targetUser.uid, // Notify the target user
-                //    fromUserId: user.uid,
-                //    fromUserDisplayName: user.displayName || 'User',
-                //    fromUserPhotoURL: user.photoURL,
-                //    targetId: user.uid, 
-                //    targetType: 'chat' 
-                //  });
+                 await createNotification({
+                   type: 'friend_request',
+                   title: 'New Friend Request',
+                   message: `${user.displayName || 'User'} sent you a friend request.`,
+                   userId: targetUser.uid, // Notify the target user
+                   fromUserId: user.uid,
+                   fromUserDisplayName: user.displayName || 'User',
+                   fromUserPhotoURL: user.photoURL,
+                   targetId: user.uid, 
+                   targetType: 'chat' 
+                 });
 
                  Alert.alert('Request Sent!', `Friend request sent to ${targetUser.displayName || 'this user'}.`);
              } catch (error) {
