@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { StyleSheet, View, Dimensions, ActivityIndicator, Text, TouchableOpacity, KeyboardAvoidingView, Modal, TouchableWithoutFeedback, TextInput, Button, Platform } from 'react-native';
+import { StyleSheet, View, Dimensions, ActivityIndicator, Text, TouchableOpacity, KeyboardAvoidingView, Modal, TouchableWithoutFeedback, TextInput, Button, Platform, Animated } from 'react-native';
 import Pdf, { type PdfDocumentProps } from 'react-native-pdf'; // this error is not real, ignore
 import { updateBookPageCount } from '../utils/getBook';
 import { FontAwesome } from '@expo/vector-icons';
@@ -54,6 +54,23 @@ export default function PdfViewer({ source, bookId, onPageChanged, isNightMode, 
   const currentUserId = auth.currentUser?.uid || 'anonymous_user';
   const [pageSentiment, setPageSentiment] = useState<PageSentiment>('Neutral');
   
+  const sendButtonScale = useRef(new Animated.Value(1)).current;
+  
+  const triggerSendAnimation = () => {
+    Animated.sequence([
+        Animated.timing(sendButtonScale, {
+            toValue: 1, 
+            duration: 40,
+            useNativeDriver: true,
+        }),
+        Animated.timing(sendButtonScale, {
+            toValue: 1,
+            duration: 4,
+            useNativeDriver: true,
+        }),
+    ]).start();
+  };
+
   useEffect(() => {
     // Only fetch saved page if we have a valid user and book
     if (currentUserId !== 'anonymous_user' && bookId) {
@@ -80,8 +97,9 @@ export default function PdfViewer({ source, bookId, onPageChanged, isNightMode, 
   }, [bookId, currentPage]); 
 
   const handlePostComment = (textFromInput?: string) => {
-    const commentText = textFromInput ?? newComment;
+    const commentText = (typeof textFromInput === 'string' ? textFromInput : newComment) || '';
     if (commentText.trim() === '') { return; }
+    triggerSendAnimation();
     addComment(bookId, currentPage, commentText, currentUserId, isSpoiler); 
     setNewComment(''); 
     setIsSpoiler(false);
@@ -93,6 +111,7 @@ export default function PdfViewer({ source, bookId, onPageChanged, isNightMode, 
     setIsCommentSectionVisible(true);
   };
 
+  const canPost = newComment.trim().length > 0;
   return (
     <KeyboardAvoidingView
       behavior={"padding"}
@@ -177,7 +196,24 @@ export default function PdfViewer({ source, bookId, onPageChanged, isNightMode, 
             <FontAwesome name={isSpoiler ? 'eye-slash' : 'eye'} size={20} color={isSpoiler ? '#007AFF' : '#8e8e93'} />
           </TouchableOpacity>
 
-          <Button title="Post" onPress={() => handlePostComment()} disabled={!newComment.trim()} />
+          {/* Comment post button */}
+          <Animated.View style={{ transform: [{ scale: sendButtonScale }] }}>
+            <TouchableOpacity 
+              onPress={canPost ? handlePostComment : undefined} 
+              disabled={!newComment.trim()} 
+              style={[
+                  styles.postButton, 
+                  !canPost && styles.postButtonDisabled,
+                  canPost && styles.postButtonActive
+              ]}
+            >
+              <FontAwesome 
+                name="send" 
+                size={20} 
+                color={canPost ? '#FFFFFF' : '#8e8e93'} 
+              />
+            </TouchableOpacity>
+          </Animated.View>
         </View>
         )}
       <Modal
@@ -329,5 +365,19 @@ const styles = StyleSheet.create({
   spoilerToggle: {
     padding: 8,
     marginRight: 8,
+  },
+  postButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19, 
+    backgroundColor: '#3a3a3c', 
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  postButtonActive: {
+    backgroundColor: '#007AFF', 
+  },
+  postButtonDisabled: {
+    opacity: 0.4, 
   },
 });
