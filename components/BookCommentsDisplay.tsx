@@ -1,6 +1,6 @@
 import { FontAwesome } from '@expo/vector-icons';
-import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, TextInput, Button, ScrollView, Platform, TouchableOpacity, KeyboardAvoidingView, Image, Alert, Pressable } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { StyleSheet, View, Text, TextInput, Button, ScrollView, Platform, TouchableOpacity, KeyboardAvoidingView, Image, Alert, Pressable, Animated } from 'react-native';
 import { Comment, toggleLike, deleteComment  } from '../utils/bookComments';
 import { UserProfile, getUserProfile } from '../utils/userProfile';
 
@@ -166,13 +166,32 @@ export default function BookCommentsDisplay({
     isSpoiler,
     setIsSpoiler
 }: CommentSectionProps) {
+  const sendButtonScale = useRef(new Animated.Value(1)).current;
+  
+    const triggerSendAnimation = () => {
+        Animated.sequence([
+            Animated.timing(sendButtonScale, {
+                toValue: 1, 
+                duration: 40,
+                useNativeDriver: true,
+            }),
+            Animated.timing(sendButtonScale, {
+                toValue: 1,
+                duration: 4,
+                useNativeDriver: true,
+            }),
+        ]).start();
+    };
     //Call the helper function here to declare the variables before the return statement.
     const { text, color, emoji } = getPageSentimentDisplay(pageSentiment);
 
   const handlePost = () => {
     if (commentInputValue.trim() === '') return;
+    triggerSendAnimation();
     onPostComment(commentInputValue, isSpoiler);
   };
+
+  const canPost = commentInputValue.trim().length > 0;
 
   return (
     <KeyboardAvoidingView
@@ -218,7 +237,24 @@ export default function BookCommentsDisplay({
           value={commentInputValue}
           onChangeText={onCommentInputChange}
         />
-        <Button title="Post" onPress={handlePost} disabled={!commentInputValue.trim()} />
+        {/* Comment post button */}
+        <Animated.View style={{ transform: [{ scale: sendButtonScale }] }}>
+            <TouchableOpacity 
+              onPress={canPost ? handlePost : undefined} 
+              disabled={!canPost} 
+              style={[
+                  styles.postButton, 
+                  !canPost && styles.postButtonDisabled,
+                  canPost && styles.postButtonActive
+              ]}
+            >
+              <FontAwesome 
+                name="send" 
+                size={20} 
+                color={canPost ? '#FFFFFF' : '#8e8e93'} 
+              />
+            </TouchableOpacity>
+          </Animated.View>
       </View>
       <View style={styles.spoilerToggleContainer}>
         <TouchableOpacity style={styles.spoilerToggle} onPress={() => setIsSpoiler(!isSpoiler)}>
@@ -382,5 +418,19 @@ const styles = StyleSheet.create({
   },
   deleteButton: {
     paddingTop: 4,
-  }
+  },
+  postButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19, 
+    backgroundColor: '#3a3a3c', 
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  postButtonActive: {
+    backgroundColor: '#007AFF',
+  },
+  postButtonDisabled: {
+    opacity: 0.4,
+  },
 });
