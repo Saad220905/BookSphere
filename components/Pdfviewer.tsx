@@ -1,9 +1,6 @@
 import React, { useState, useEffect, useRef, ComponentProps } from 'react';
-import { StyleSheet, View, Dimensions, ActivityIndicator, Text, TouchableOpacity, KeyboardAvoidingView, Modal, TouchableWithoutFeedback, TextInput, Platform } from 'react-native';
+import { StyleSheet, View, Dimensions, ActivityIndicator, Text, TouchableOpacity, KeyboardAvoidingView, Modal, TouchableWithoutFeedback, TextInput, Animated } from 'react-native';
 import Pdf from 'react-native-pdf';
-import React, { useState, useEffect, useRef } from 'react';
-import { StyleSheet, View, Dimensions, ActivityIndicator, Text, TouchableOpacity, KeyboardAvoidingView, Modal, TouchableWithoutFeedback, TextInput, Button, Platform, Animated } from 'react-native';
-import Pdf, { type PdfDocumentProps } from 'react-native-pdf'; // this error is not real, ignore
 import { updateBookPageCount } from '../utils/getBook';
 import { FontAwesome } from '@expo/vector-icons';
 import { auth } from '../config/firebase';
@@ -36,14 +33,15 @@ interface PdfViewerProps {
   onPageChanged?: (page: number, totalPages: number) => void;
   isNightMode: boolean; 
   setIsNightMode: React.Dispatch<React.SetStateAction<boolean>>;
+  initialPage?: number;
 }
 
-export default function PdfViewer({ source, bookId, onPageChanged, isNightMode, setIsNightMode }: PdfViewerProps) {
+export default function PdfViewer({ source, bookId, onPageChanged, isNightMode, setIsNightMode, initialPage: propInitialPage }: PdfViewerProps) {
   // Page stuff
   const [totalPages, setTotalPages] = useState<number>(0);
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [initialPage, setInitialPage] = useState<number>(1);
+  const [initialPage, setInitialPage] = useState<number>(propInitialPage || 1);
 
 
   // Comment stuff
@@ -75,7 +73,13 @@ export default function PdfViewer({ source, bookId, onPageChanged, isNightMode, 
   };
 
   useEffect(() => {
-    // Only fetch saved page if we have a valid user and book
+    // If initialPage prop is provided, use it (for navigation from forum)
+    if (propInitialPage) {
+      setInitialPage(propInitialPage);
+      return;
+    }
+    
+    // Otherwise, fetch saved page if we have a valid user and book
     if (currentUserId !== 'anonymous_user' && bookId) {
       loadReadingProgress(currentUserId, bookId)
         .then(progress => {
@@ -87,7 +91,7 @@ export default function PdfViewer({ source, bookId, onPageChanged, isNightMode, 
           console.error('Error loading reading progress:', error);
         });
     }
-  }, [bookId, currentUserId]);
+  }, [bookId, currentUserId, propInitialPage]);
 
   useEffect(() => {
     if (!bookId || !currentPage) return;
@@ -133,12 +137,17 @@ export default function PdfViewer({ source, bookId, onPageChanged, isNightMode, 
           onLoadComplete={(numberOfPages: number) => {
             setTotalPages(numberOfPages);
             setIsLoading(false);
-            updateBookPageCount(bookId, numberOfPages); 
-            saveReadingProgress(currentUserId, bookId, currentPage, numberOfPages); 
+            updateBookPageCount(bookId, numberOfPages).catch((err) => {
+              console.error('Error updating book page count:', err);
+            });
+            saveReadingProgress(currentUserId, bookId, currentPage, numberOfPages).catch((err) => {
+              console.error('Error saving reading progress:', err);
+            });
           }}
           onPageChanged={(page: number, numberOfPages: number) => {
-            console.log(`Page turned: ${page}`) // DEBUG : remove later
-            saveReadingProgress(currentUserId, bookId, page, numberOfPages); 
+            saveReadingProgress(currentUserId, bookId, page, numberOfPages).catch((err) => {
+              console.error('Error saving reading progress:', err);
+            });
             setCurrentPage(page);
             if (onPageChanged) {
               onPageChanged(page, numberOfPages);

@@ -20,6 +20,7 @@ import {
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
+  ActivityIndicator,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -34,6 +35,7 @@ import LoadingSpinner from '../../components/LoadingSpinner';
 import { Text } from '../../components/Themed';
 import { db } from '../../config/firebase';
 import { useAuth } from '../../contexts/AuthContext';
+import { calculateOverallBookSentiment } from '../../utils/bookComments';
 
 interface ClubDetails {
   id: string;
@@ -80,6 +82,7 @@ export default function ClubDetailsScreen() {
   const [forumPosts, setForumPosts] = useState<ClubPost[]>([]);
   const [newPost, setNewPost] = useState('');
   const [draftPageContext, setDraftPageContext] = useState<number | null>(null);
+  const [overallSentiment, setOverallSentiment] = useState<'Positive' | 'Negative' | 'Neutral' | 'Mixed' | 'No Comments' | 'AnalysisError' | 'Loading...'>('Loading...');
 
   const isAuthenticated = Boolean(user);
   const firestore = db as Firestore | null;
@@ -161,6 +164,23 @@ export default function ClubDetailsScreen() {
   useEffect(() => {
     refreshMembership();
   }, [refreshMembership]);
+
+  useEffect(() => {
+    const fetchSentiment = async () => {
+      if (book?.id) {
+        try {
+          const result = await calculateOverallBookSentiment(book.id);
+          setOverallSentiment(result);
+        } catch (error) {
+          console.error('Error calculating sentiment:', error);
+          setOverallSentiment('AnalysisError');
+        }
+      } else {
+        setOverallSentiment('Loading...');
+      }
+    };
+    fetchSentiment();
+  }, [book?.id]);
 
   useEffect(() => {
     if (!firestore || !id) return;
@@ -296,20 +316,44 @@ export default function ClubDetailsScreen() {
     }
   }, [draftPageContext, firestore, id, isMember, newPost, user, userProfile]);
 
-  const handleOpenReadingRoom = useCallback(() => {
+  const handleOpenReadingRoom = useCallback((pageNumber?: number) => {
     if (!book) return;
     const pdfUrl = book.pdfUrl || book.pdf_url;
     if (!pdfUrl) return;
     
+    const params: Record<string, string> = {
+      pdf_url: pdfUrl,
+      book_id: book.id,
+    };
+    
+    if (book.title) {
+      params.book_title = book.title;
+    }
+    
+    if (pageNumber) {
+      params.initial_page = pageNumber.toString();
+    }
+    
     router.push({
       pathname: '/viewer',
-      params: {
-        pdf_url: pdfUrl,
-        book_id: book.id,
-        book_title: book.title || undefined,
-      },
+      params,
     });
   }, [router, book]);
+
+  const getSentimentStyle = (sentiment: string) => {
+    switch (sentiment) {
+      case 'Positive': return { color: '#1B5E20', backgroundColor: '#C8E6C9', emoji: '😊' };
+      case 'Negative': return { color: '#B71C1C', backgroundColor: '#FFCDD2', emoji: '😔' };
+      case 'Mixed': return { color: '#37474F', backgroundColor: '#CFD8DC', emoji: '🤨' };
+      case 'Neutral':
+      case 'No Comments':
+      case 'AnalysisError':
+        return { color: '#5D4037', backgroundColor: '#FFF9C4', emoji: '😐' };
+      case 'Loading...':
+      default:
+        return { color: '#777', backgroundColor: '#F0F0F0', emoji: '...' };
+    }
+  };
 
   const formatPostTimestamp = (date: Date | null) => {
     if (!date) return 'Just now';
@@ -340,10 +384,21 @@ export default function ClubDetailsScreen() {
             <View style={styles.postHeader}>
               <Text style={styles.postAuthor}>{post.authorName}</Text>
               {post.pageNumber ? (
-                <View style={styles.pageBadge}>
+                <TouchableOpacity
+                  style={styles.pageBadge}
+                  onPress={() => {
+                    if (book && post.pageNumber) {
+                      handleOpenReadingRoom(post.pageNumber);
+                    } else {
+                      Alert.alert('No PDF', 'This book does not have a PDF available.');
+                    }
+                  }}
+                  activeOpacity={0.7}
+                >
                   <FontAwesome name="file-text" size={12} color="#0a7ea4" />
                   <Text style={styles.pageBadgeText}>Page {post.pageNumber}</Text>
-                </View>
+                  <FontAwesome name="external-link" size={10} color="#0a7ea4" style={styles.pageLinkIcon} />
+                </TouchableOpacity>
               ) : null}
             </View>
             <Text style={styles.postBody}>{post.body}</Text>
@@ -358,13 +413,49 @@ export default function ClubDetailsScreen() {
         style={styles.postComposer}
       >
         <View style={styles.pageContextRow}>
-          <Text style={styles.pageContextLabel}>
-            {draftPageContext ? `Linked to page ${draftPageContext}` : 'No page linked'}
-          </Text>
-          {draftPageContext && (
-            <TouchableOpacity onPress={() => setDraftPageContext(null)}>
-              <Text style={styles.clearPageLink}>Clear</Text>
-            </TouchableOpacity>
+          {draftPageContext ? (
+            <View style={styles.pageContextBadge}>
+              <FontAwesome name="file-text" size={12} color="#0a7ea4" />
+              <Text style={styles.pageContextText}>Page {draftPageContext}</Text>
+              <TouchableOpacity 
+                onPress={() => setDraftPageContext(null)}
+                style={styles.removePageButton}
+              >
+                <FontAwesome name="times" size={12} color="#666" />
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={styles.pageContextActions}>
+              <TouchableOpacity
+                style={styles.linkPageButton}
+                onPress={() => {
+                  Alert.prompt(
+                    'Link Page',
+                    'Enter the page number you want to reference:',
+                    [
+                      { text: 'Cancel', style: 'cancel' },
+                      {
+                        text: 'Link',
+                        onPress: (pageText) => {
+                          const pageNum = parseInt(pageText || '0', 10);
+                          if (pageNum > 0) {
+                            setDraftPageContext(pageNum);
+                          } else {
+                            Alert.alert('Invalid', 'Please enter a valid page number.');
+                          }
+                        },
+                      },
+                    ],
+                    'plain-text',
+                    '',
+                    'numeric'
+                  );
+                }}
+              >
+                <FontAwesome name="link" size={12} color="#0a7ea4" />
+                <Text style={styles.linkPageText}>Link Page</Text>
+              </TouchableOpacity>
+            </View>
           )}
         </View>
 
@@ -471,25 +562,46 @@ export default function ClubDetailsScreen() {
         </View>
 
         {book && (
-          <View style={styles.bookCard}>
-            <Image
-              source={{
-                uri:
-                  bookCover ||
-                  'https://via.placeholder.com/70x100/eeeeee/999999?text=Book',
-              }}
-              style={styles.bookCover}
-            />
-            <View style={styles.bookInfo}>
-              <Text style={styles.bookTitle}>{book.title ?? 'Current book'}</Text>
-              {book.author ? <Text style={styles.bookAuthor}>{book.author}</Text> : null}
-              {(book.pdfUrl || book.pdf_url) ? (
-                <Text style={styles.bookSubtitle}>Shared public PDF available</Text>
-              ) : (
-                <Text style={styles.bookSubtitleMuted}>PDF not attached</Text>
-              )}
+          <>
+            <View style={styles.bookCard}>
+              <Image
+                source={{
+                  uri:
+                    bookCover ||
+                    'https://via.placeholder.com/70x100/eeeeee/999999?text=Book',
+                }}
+                style={styles.bookCover}
+              />
+              <View style={styles.bookInfo}>
+                <Text style={styles.bookTitle}>{book.title ?? 'Current book'}</Text>
+                {book.author ? <Text style={styles.bookAuthor}>{book.author}</Text> : null}
+                {(book.pdfUrl || book.pdf_url) ? (
+                  <Text style={styles.bookSubtitle}>Shared public PDF available</Text>
+                ) : (
+                  <Text style={styles.bookSubtitleMuted}>PDF not attached</Text>
+                )}
+              </View>
             </View>
-          </View>
+            {book.id && (
+              <View style={[styles.sentimentBanner, { backgroundColor: getSentimentStyle(overallSentiment).backgroundColor }]}>
+                {overallSentiment === 'Loading...' ? (
+                  <ActivityIndicator size="small" color={getSentimentStyle(overallSentiment).color} />
+                ) : overallSentiment === 'No Comments' ? (
+                  <Text style={[styles.sentimentText, { color: getSentimentStyle(overallSentiment).color }]}>
+                    No Comments Yet — Be the first to share your thoughts!
+                  </Text>
+                ) : overallSentiment === 'AnalysisError' ? (
+                  <Text style={[styles.sentimentText, { color: getSentimentStyle(overallSentiment).color }]}>
+                    Analysis Error
+                  </Text>
+                ) : (
+                  <Text style={[styles.sentimentText, { color: getSentimentStyle(overallSentiment).color }]}>
+                    Overall Reader Sentiment: {getSentimentStyle(overallSentiment).emoji} {overallSentiment}
+                  </Text>
+                )}
+              </View>
+            )}
+          </>
         )}
 
         {(book?.pdfUrl || book?.pdf_url) && (
@@ -550,11 +662,6 @@ const styles = StyleSheet.create({
   },
   bookTitle: {
     fontSize: 18,
-    fontWeight: '600',
-  },
-  clearPageLink: {
-    color: '#0a7ea4',
-    fontSize: 13,
     fontWeight: '600',
   },
   clubDescription: {
@@ -653,21 +760,54 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 4,
     paddingHorizontal: 8,
-    paddingVertical: 2,
+    paddingVertical: 4,
   },
   pageBadgeText: {
     color: '#0a7ea4',
     fontSize: 12,
     fontWeight: '600',
   },
-  pageContextLabel: {
-    color: '#666',
-    fontSize: 13,
+  pageLinkIcon: {
+    marginLeft: 2,
   },
   pageContextRow: {
+    marginBottom: 8,
+  },
+  pageContextBadge: {
     alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: '#e6f4fb',
+    borderRadius: 16,
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  pageContextText: {
+    color: '#0a7ea4',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  removePageButton: {
+    marginLeft: 4,
+    padding: 2,
+  },
+  pageContextActions: {
+    flexDirection: 'row',
+  },
+  linkPageButton: {
+    alignItems: 'center',
+    backgroundColor: '#f0f8ff',
+    borderRadius: 16,
+    flexDirection: 'row',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  linkPageText: {
+    color: '#0a7ea4',
+    fontSize: 13,
+    fontWeight: '600',
   },
   postBody: {
     color: '#333',
@@ -783,6 +923,18 @@ const styles = StyleSheet.create({
     color: '#111',
     fontSize: 15,
     fontWeight: '600',
+  },
+  sentimentBanner: {
+    borderRadius: 12,
+    marginBottom: 16,
+    padding: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sentimentText: {
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center',
   },
 });
 
