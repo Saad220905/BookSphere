@@ -8,7 +8,8 @@ import {
   orderBy, 
   query, 
   serverTimestamp,
-  updateDoc 
+  updateDoc,
+  Timestamp 
 } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import {
@@ -167,7 +168,11 @@ export default function CommentsModal({ visible, postId, onClose }: CommentsModa
         <View style={styles.commentHeader}>
           <Text style={styles.commentUserName}>{item.userDisplayName}</Text>
           <Text style={styles.commentTime}>
-            {item.createdAt?.toDate().toLocaleDateString()}
+            {item.createdAt && (item.createdAt instanceof Timestamp || typeof item.createdAt?.toDate === 'function') 
+              ? item.createdAt.toDate().toLocaleDateString() 
+              : item.createdAt instanceof Date 
+                ? item.createdAt.toLocaleDateString()
+                : 'Unknown date'}
           </Text>
         </View>
         <Text style={styles.commentText}>{item.content}</Text>
@@ -189,7 +194,11 @@ export default function CommentsModal({ visible, postId, onClose }: CommentsModa
           <View style={styles.postInfo}>
             <Text style={styles.postUserName}>{post.userDisplayName}</Text>
             <Text style={styles.postTime}>
-              {post.createdAt?.toDate().toLocaleDateString()}
+              {post.createdAt && (post.createdAt instanceof Timestamp || typeof post.createdAt?.toDate === 'function') 
+                ? post.createdAt.toDate().toLocaleDateString() 
+                : post.createdAt instanceof Date 
+                  ? post.createdAt.toLocaleDateString()
+                  : 'Unknown date'}
             </Text>
           </View>
         </View>

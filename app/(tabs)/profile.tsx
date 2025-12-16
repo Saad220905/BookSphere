@@ -146,6 +146,16 @@ export default function ProfileScreen() {
     loadUserPosts();
   }, [user, loadUserPosts]);
 
+    const handleSignOut = async () => {
+    try {
+      await signOut();
+      router.replace('/(auth)/login');
+    } catch (error) {
+      console.error('Error signing out:', error);
+      Alert.alert('Error', 'Failed to sign out. Please try again.');
+    }
+  };
+
   const renderPost = ({ item }: { item: UserPost }) => (
     <View style={styles.postCard}>
       <Text style={styles.postContent}>{item.content}</Text>
@@ -199,16 +209,6 @@ export default function ProfileScreen() {
     );
   }
 
-  const handleSignOut = async () => {
-    try {
-      await signOut();
-      router.replace('/(auth)/login');
-    } catch (error) {
-      console.error('Error signing out:', error);
-      Alert.alert('Error', 'Failed to sign out. Please try again.');
-    }
-  };
-
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView style={styles.scrollView}>
@@ -230,13 +230,18 @@ export default function ProfileScreen() {
             <TouchableOpacity onPress={() => router.push('/profile/edit')}>
               <FontAwesome name="cog" size={24} color="#666" />
             </TouchableOpacity>
+
+            <TouchableOpacity onPress={handleSignOut}>
+              <FontAwesome name="sign-out" size={28} color="#ff4444" />
+              {/* <Text style={styles.signOutText}>Sign Out</Text> */}
+            </TouchableOpacity>
           </View>
         </View>
 
         <View style={styles.profileSection}>
           <UserAvatar
-            photoUrl={currentPhotoUrl || undefined} // Must be null or undefined to trigger fallback
-            displayName={currentDisplayName}      // Must be a non-empty string
+            photoUrl={currentPhotoUrl || undefined}
+            displayName={currentDisplayName}
             size={100}
           />
           <Text style={styles.displayName}>{user?.displayName || createMockUser().displayName}</Text>
@@ -300,10 +305,6 @@ export default function ProfileScreen() {
           />
         )}
 
-        <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
-          <FontAwesome name="sign-out" size={20} color="#ff4444" />
-          <Text style={styles.signOutText}>Sign Out</Text>
-        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );
@@ -458,15 +459,15 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginBottom: 12,
   },
-  signOutButton: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: 8,
-    justifyContent: 'center',
-    marginBottom: 40,
-    marginTop: 20,
-    padding: 16,
-  },
+  // signOutButton: {
+  //   alignItems: 'center',
+  //   flexDirection: 'row',
+  //   gap: 8,
+  //   justifyContent: 'center',
+  //   marginBottom: 40,
+  //   marginTop: 20,
+  //   padding: 16,
+  // },
   signOutText: {
     color: '#ff4444',
     fontSize: 16,
