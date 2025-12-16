@@ -1,5 +1,5 @@
 import React, {useEffect, useState} from 'react';
-import { StyleSheet, View, Text, Button, Image, ScrollView, ActivityIndicator } from 'react-native';
+import { StyleSheet, View, Text, Button, Image, ScrollView, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { calculateOverallBookSentiment } from '../utils/bookComments'; // IMPORT FOR BOOK OVERALL ANALYSIS
@@ -35,9 +35,6 @@ export default function BookSummaryScreen() {
     };
     fetchSentiment();
   }, [book_id]);
-
-
-
 
   if (!title || !pdf_url || !book_id) {
     return (
@@ -82,9 +79,6 @@ export default function BookSummaryScreen() {
 
   const sentimentDisplay = getSentimentStyle(overallSentiment);
 
-
-
-
   return (
     <SafeAreaView style={styles.container}>
       <Stack.Screen options={{ title: "Book Details", headerShown: true }} />
@@ -128,23 +122,15 @@ export default function BookSummaryScreen() {
         <Text style={styles.author}>by {author || 'Unknown Author'}</Text>
         <Text style={styles.publishYear}>First published: {publish_year || 'N/A'}</Text>
 
-        {/* NEW SENTIMENT DISPLAY SECTION
-        <View style={styles.sentimentBox}>
-            <Text style={styles.sentimentLabel}>Overall Reader Sentiment:</Text>
-            {overallSentiment === 'Loading...' ? (
-                <ActivityIndicator size="small" color="#0000ff" />
-            ) : overallSentiment === 'No Comments' ? (
-                <Text style={styles.noCommentsText}>No Comments Yet</Text>
-            ) : (
-                <Text style={[styles.sentimentText, { color: sentimentDisplay.color }]}>
-                    {sentimentDisplay.emoji} {overallSentiment}
-                </Text>
-            )}
-        </View> */}
-
         {/* Read button */}
         <View style={styles.buttonContainer}>
-          <Button title="Read Now" onPress={handleReadNow} />
+          <TouchableOpacity
+              style={styles.readNowButton}
+              onPress={handleReadNow}
+              activeOpacity={0.8}
+          >
+              <Text style={styles.readNowButtonText}>Read Now</Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -180,7 +166,6 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#000000ff',
     textAlign: 'center',
-    // marginBottom: 1,
   },
   author: {
     fontSize: 16,
@@ -194,8 +179,21 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   buttonContainer: { 
-    width: '60%', 
-    marginTop: 10,
+    width: '80%', 
+  },
+  readNowButton: {
+    width: '100%',
+    flexDirection: 'row', 
+    alignItems: 'center',
+    justifyContent: 'center', 
+    height: 48,
+    backgroundColor: '#0a7ea4', 
+    borderRadius: 20, 
+  },
+  readNowButtonText: {
+    color: '#fff', 
+    fontSize: 16,
+    fontWeight: 'bold', 
   },
   errorContainer: { 
     flex: 1,
