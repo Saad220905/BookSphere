@@ -8,7 +8,7 @@ import PdfViewer from '../components/Pdfviewer';
 export default function ViewerScreen() {
   const { pdf_url , book_id , book_title } = useLocalSearchParams<{ pdf_url: string; book_id: string ; book_title?: string }>();
   const [isNightMode, setIsNightMode] = useState(false);
-  console.log(`${pdf_url} ${book_id} ${book_title}`)
+  
   if (!pdf_url || !book_id) {
     return (
       <SafeAreaView style={styles.container}>

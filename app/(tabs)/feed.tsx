@@ -52,6 +52,7 @@ export default function FeedScreen() {
     if (currentUserProfile && user) {
       loadPosts();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUserProfile, user]);
 
   const loadUserProfile = async () => {

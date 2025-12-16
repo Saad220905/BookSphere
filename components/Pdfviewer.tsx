@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { StyleSheet, View, Dimensions, ActivityIndicator, Text, TouchableOpacity, KeyboardAvoidingView, Modal, TouchableWithoutFeedback, TextInput, Button, Platform } from 'react-native';
-import Pdf, { type PdfDocumentProps } from 'react-native-pdf'; // this error is not real, ignore
+import React, { useState, useEffect, useRef, ComponentProps } from 'react';
+import { StyleSheet, View, Dimensions, ActivityIndicator, Text, TouchableOpacity, KeyboardAvoidingView, Modal, TouchableWithoutFeedback, TextInput, Platform } from 'react-native';
+import Pdf from 'react-native-pdf';
 import { updateBookPageCount } from '../utils/getBook';
 import { FontAwesome } from '@expo/vector-icons';
 import { auth } from '../config/firebase';
@@ -48,6 +48,38 @@ export default function PdfViewer({ source, bookId, onPageChanged, isNightMode, 
   const currentUserId = auth.currentUser?.uid || 'anonymous_user';
   const [pageSentiment, setPageSentiment] = useState<PageSentiment>('Neutral');
   
+  const sendButtonScale = useRef(new Animated.Value(1)).current;
+  
+  const triggerSendAnimation = () => {
+    Animated.sequence([
+        Animated.timing(sendButtonScale, {
+            toValue: 1, 
+            duration: 40,
+            useNativeDriver: true,
+        }),
+        Animated.timing(sendButtonScale, {
+            toValue: 1,
+            duration: 4,
+            useNativeDriver: true,
+        }),
+    ]).start();
+  };
+
+  useEffect(() => {
+    // Only fetch saved page if we have a valid user and book
+    if (currentUserId !== 'anonymous_user' && bookId) {
+      loadReadingProgress(currentUserId, bookId)
+        .then(progress => {
+          if (progress?.currentPage) {
+            setInitialPage(progress.currentPage); // Set the start page
+          }
+        })
+        .catch((error) => {
+          console.error('Error loading reading progress:', error);
+        });
+    }
+  }, [bookId, currentUserId]);
+
   useEffect(() => {
     if (!bookId || !currentPage) return;
 
@@ -87,20 +119,26 @@ export default function PdfViewer({ source, bookId, onPageChanged, isNightMode, 
           trustAllCerts={false}
           horizontal={true}
           onLoadComplete={(numberOfPages: number) => {
-            console.log(`Total pages loaded: ${numberOfPages}`) // DEBUG : remove later
             setTotalPages(numberOfPages);
             setIsLoading(false);
-            updateBookPageCount(bookId, numberOfPages); 
+            updateBookPageCount(bookId, numberOfPages).catch((err) => {
+              console.error('Error updating book page count:', err);
+            });
+            saveReadingProgress(currentUserId, bookId, currentPage, numberOfPages).catch((err) => {
+              console.error('Error saving reading progress:', err);
+            });
           }}
           onPageChanged={(page: number, numberOfPages: number) => {
-            console.log(`Page turned: ${page}`) // DEBUG : remove later
+            saveReadingProgress(currentUserId, bookId, page, numberOfPages).catch((err) => {
+              console.error('Error saving reading progress:', err);
+            });
             setCurrentPage(page);
             if (onPageChanged) {
               onPageChanged(page, numberOfPages);
             }
           }}
           onError={(error: object) => {
-            console.log(error);
+            console.error('PDF loading error:', error);
             setIsLoading(false);
           }}
           style={[styles.pdf, isNightMode && styles.pdfNight]}
@@ -127,10 +165,14 @@ export default function PdfViewer({ source, bookId, onPageChanged, isNightMode, 
         {/* Night mode toggle */}
         {!isLoading && (
           <TouchableOpacity 
-            style={styles.nightModeToggle} 
+            style={[styles.nightModeToggle, isNightMode && styles.nightModeToggleActive]} 
             onPress={() => setIsNightMode(!isNightMode)}
+            activeOpacity={0.7}
           >
             <NightModeToggleIcon active={isNightMode} />
+            <Text style={styles.nightModeLabel}>
+              {isNightMode ? 'Lights Off' : 'Lights On'}
+            </Text>
           </TouchableOpacity>
         )}
       </View>
@@ -221,10 +263,29 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 20,
     right: 20,
-    padding: 8,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    borderRadius: 20,
-    zIndex: 2, 
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    borderRadius: 24,
+    zIndex: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  nightModeToggleActive: {
+    backgroundColor: 'rgba(0, 0, 0, 0.85)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 215, 0, 0.3)',
+  },
+  nightModeLabel: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
   },
   modalNight: {
     backgroundColor: '#1c1c1e',

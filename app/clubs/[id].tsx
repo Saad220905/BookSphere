@@ -1,5 +1,5 @@
 import { FontAwesome } from '@expo/vector-icons';
-import { Stack, useLocalSearchParams } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import {
   Firestore,
   addDoc,
@@ -31,7 +31,6 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import LoadingSpinner from '../../components/LoadingSpinner';
-import PdfViewer from '../../components/Pdfviewer';
 import { Text } from '../../components/Themed';
 import { db } from '../../config/firebase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -70,6 +69,7 @@ interface ClubPost {
 export default function ClubDetailsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user, userProfile } = useAuth();
+  const router = useRouter();
 
   const [club, setClub] = useState<ClubDetails | null>(null);
   const [book, setBook] = useState<BookDetails | null>(null);
@@ -80,16 +80,9 @@ export default function ClubDetailsScreen() {
   const [forumPosts, setForumPosts] = useState<ClubPost[]>([]);
   const [newPost, setNewPost] = useState('');
   const [draftPageContext, setDraftPageContext] = useState<number | null>(null);
-  const [selectedTab, setSelectedTab] = useState<'forum' | 'reading'>('forum');
-  const [currentReadingPage, setCurrentReadingPage] = useState<number | null>(null);
 
   const isAuthenticated = Boolean(user);
   const firestore = db as Firestore | null;
-
-  const pdfUrl = useMemo(() => {
-    if (!book) return null;
-    return book.pdfUrl || book.pdf_url || null;
-  }, [book]);
 
   const bookCover = useMemo(() => {
     if (!book) return null;
@@ -303,11 +296,20 @@ export default function ClubDetailsScreen() {
     }
   }, [draftPageContext, firestore, id, isMember, newPost, user, userProfile]);
 
-  const handleShareCurrentPage = useCallback(() => {
-    if (!currentReadingPage) return;
-    setDraftPageContext(currentReadingPage);
-    setSelectedTab('forum');
-  }, [currentReadingPage]);
+  const handleOpenReadingRoom = useCallback(() => {
+    if (!book) return;
+    const pdfUrl = book.pdfUrl || book.pdf_url;
+    if (!pdfUrl) return;
+    
+    router.push({
+      pathname: '/viewer',
+      params: {
+        pdf_url: pdfUrl,
+        book_id: book.id,
+        book_title: book.title || undefined,
+      },
+    });
+  }, [router, book]);
 
   const formatPostTimestamp = (date: Date | null) => {
     if (!date) return 'Just now';
@@ -388,45 +390,6 @@ export default function ClubDetailsScreen() {
     </View>
   );
 
-  const renderReadingRoom = () => (
-    <View style={styles.readerSection}>
-      <View style={styles.readerHeader}>
-        <View>
-          <Text style={styles.readerTitle}>Shared Reader</Text>
-          {currentReadingPage ? (
-            <Text style={styles.readerSubtitle}>Currently on page {currentReadingPage}</Text>
-          ) : (
-            <Text style={styles.readerSubtitle}>Start reading to share progress</Text>
-          )}
-        </View>
-        {isMember && currentReadingPage && (
-          <TouchableOpacity style={styles.discussButton} onPress={handleShareCurrentPage}>
-            <FontAwesome name="commenting" size={16} color="#fff" />
-            <Text style={styles.discussButtonText}>Discuss this page</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-
-      <View style={styles.viewerContainer}>
-        {pdfUrl ? (
-          <PdfViewer
-            source={{ uri: pdfUrl, cache: true }}
-            bookId={book?.id || club?.bookId || id || 'club-book'}
-            onPageChanged={(page) => setCurrentReadingPage(page)} isNightMode={false} setIsNightMode={function (value: React.SetStateAction<boolean>): void {
-              throw new Error('Function not implemented.');
-            } }          />
-        ) : (
-          <View style={styles.emptyReader}>
-            <FontAwesome name="file-pdf-o" size={32} color="#999" />
-            <Text style={styles.emptyReaderTitle}>No PDF available</Text>
-            <Text style={styles.emptyReaderSubtitle}>
-              Ask the club owner to attach a public PDF to this book.
-            </Text>
-          </View>
-        )}
-      </View>
-    </View>
-  );
 
   if (loading) {
     return (
@@ -520,7 +483,7 @@ export default function ClubDetailsScreen() {
             <View style={styles.bookInfo}>
               <Text style={styles.bookTitle}>{book.title ?? 'Current book'}</Text>
               {book.author ? <Text style={styles.bookAuthor}>{book.author}</Text> : null}
-              {pdfUrl ? (
+              {(book.pdfUrl || book.pdf_url) ? (
                 <Text style={styles.bookSubtitle}>Shared public PDF available</Text>
               ) : (
                 <Text style={styles.bookSubtitleMuted}>PDF not attached</Text>
@@ -529,46 +492,14 @@ export default function ClubDetailsScreen() {
           </View>
         )}
 
-        <View style={styles.tabBar}>
-          <TouchableOpacity
-            style={[styles.tabButton, selectedTab === 'forum' && styles.tabButtonActive]}
-            onPress={() => setSelectedTab('forum')}
-          >
-            <FontAwesome
-              name="comments"
-              size={16}
-              color={selectedTab === 'forum' ? '#fff' : '#666'}
-            />
-            <Text
-              style={[
-                styles.tabButtonText,
-                selectedTab === 'forum' && styles.tabButtonTextActive,
-              ]}
-            >
-              Forum
-            </Text>
+        {(book?.pdfUrl || book?.pdf_url) && (
+          <TouchableOpacity style={styles.readingRoomButton} onPress={handleOpenReadingRoom}>
+            <FontAwesome name="book" size={20} color="#fff" />
+            <Text style={styles.readingRoomButtonText}>Open Reading Room</Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tabButton, selectedTab === 'reading' && styles.tabButtonActive]}
-            onPress={() => setSelectedTab('reading')}
-          >
-            <FontAwesome
-              name="book"
-              size={16}
-              color={selectedTab === 'reading' ? '#fff' : '#666'}
-            />
-            <Text
-              style={[
-                styles.tabButtonText,
-                selectedTab === 'reading' && styles.tabButtonTextActive,
-              ]}
-            >
-              Reading room
-            </Text>
-          </TouchableOpacity>
-        </View>
+        )}
 
-        {selectedTab === 'forum' ? renderForumPosts() : renderReadingRoom()}
+        {renderForumPosts()}
       </ScrollView>
     </SafeAreaView>
   );
@@ -649,19 +580,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#f5f6f8',
     flex: 1,
   },
-  discussButton: {
-    alignItems: 'center',
-    backgroundColor: '#0a7ea4',
-    borderRadius: 20,
-    flexDirection: 'row',
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-  },
-  discussButtonText: {
-    color: '#fff',
-    fontWeight: '600',
-  },
   emptyForum: {
     alignItems: 'center',
     borderColor: '#eee',
@@ -675,22 +593,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   emptyForumTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginTop: 12,
-  },
-  emptyReader: {
-    alignItems: 'center',
-    flex: 1,
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-  },
-  emptyReaderSubtitle: {
-    color: '#777',
-    marginTop: 6,
-    textAlign: 'center',
-  },
-  emptyReaderTitle: {
     fontSize: 16,
     fontWeight: '600',
     marginTop: 12,
@@ -814,23 +716,20 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-  readerHeader: {
+  readingRoomButton: {
     alignItems: 'center',
+    backgroundColor: '#0a7ea4',
+    borderRadius: 12,
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 12,
+    gap: 10,
+    justifyContent: 'center',
+    marginBottom: 16,
+    paddingHorizontal: 20,
+    paddingVertical: 14,
   },
-  readerSection: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 16,
-  },
-  readerSubtitle: {
-    color: '#666',
-    marginTop: 4,
-  },
-  readerTitle: {
-    fontSize: 18,
+  readingRoomButtonText: {
+    color: '#fff',
+    fontSize: 16,
     fontWeight: '600',
   },
   retryButton: {
@@ -873,40 +772,6 @@ const styles = StyleSheet.create({
   },
   sendButtonDisabled: {
     opacity: 0.4,
-  },
-  tabBar: {
-    backgroundColor: '#fff',
-    borderRadius: 40,
-    flexDirection: 'row',
-    marginBottom: 16,
-    padding: 6,
-  },
-  tabButton: {
-    alignItems: 'center',
-    borderRadius: 30,
-    flex: 1,
-    flexDirection: 'row',
-    gap: 8,
-    justifyContent: 'center',
-    paddingVertical: 10,
-  },
-  tabButtonActive: {
-    backgroundColor: '#0a7ea4',
-  },
-  tabButtonText: {
-    color: '#666',
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  tabButtonTextActive: {
-    color: '#fff',
-  },
-  viewerContainer: {
-    borderColor: '#f0f0f0',
-    borderRadius: 16,
-    borderWidth: 1,
-    height: 600,
-    overflow: 'hidden',
   },
   centered: {
     alignItems: 'center',
