@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { StyleSheet, TextInput, View, ActivityIndicator, Alert, Button } from 'react-native';
+import { StyleSheet, TextInput, View, ActivityIndicator, Alert, TouchableOpacity, Text as RNText } from 'react-native';
 import { Text } from '../../components/Themed';
 import { router } from 'expo-router';
 import { fetchBookPdfUrl } from '../../utils/getBook';
+import { FontAwesome } from '@expo/vector-icons';
 
 export default function SearchScreen() {
     const [query, setQuery] = useState<string>('');
@@ -57,10 +58,14 @@ export default function SearchScreen() {
             {isLoading ? (
                 <ActivityIndicator size="large" color="#007AFF" style={styles.loader} />
             ) : (
-                <Button
-                    title="Search"
+                <TouchableOpacity
+                    style={styles.searchButton}
                     onPress={handleSearch}
-                />
+                    activeOpacity={0.8}
+                >
+                    <FontAwesome name="search" size={18} color="#fff" style={styles.searchIcon} />
+                    <RNText style={styles.searchButtonText}>Search</RNText>
+                </TouchableOpacity>
             )}
         </View>
     );
@@ -105,5 +110,24 @@ const styles = StyleSheet.create({
     },
     loader: {
         marginTop: 20, 
-    }
+    },
+    searchButton: {
+        width: '30%',
+        flexDirection: 'row', 
+        alignItems: 'center',
+        justifyContent: 'center', 
+        height: 45, 
+        backgroundColor: '#0a7ea4', 
+        borderRadius: 20, 
+        marginTop: 0, 
+    },
+    searchButtonText: {
+        color: '#fff', 
+        fontSize: 16,
+        fontWeight: 'bold', 
+        marginLeft: 8, 
+    },
+    searchIcon: {
+        marginRight: 6, 
+    },
 });
