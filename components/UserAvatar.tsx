@@ -51,7 +51,7 @@ const styles = StyleSheet.create({
   },
   placeholder: {
     alignItems: 'center',
-    backgroundColor: colors.avatar,
+    backgroundColor: '#0a7ea4',
     borderRadius: 9999,
     justifyContent: 'center',
   },
