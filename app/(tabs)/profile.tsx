@@ -19,6 +19,8 @@ interface UserProfile {
   booksRead?: number;
   friends?: number;
   joinDate?: string;
+  displayName?: string;
+  photoURL?: string;
 }
 
 interface UserPost {
@@ -144,6 +146,16 @@ export default function ProfileScreen() {
     loadUserPosts();
   }, [user, loadUserPosts]);
 
+    const handleSignOut = async () => {
+    try {
+      await signOut();
+      router.replace('/(auth)/login');
+    } catch (error) {
+      console.error('Error signing out:', error);
+      Alert.alert('Error', 'Failed to sign out. Please try again.');
+    }
+  };
+
   const renderPost = ({ item }: { item: UserPost }) => (
     <View style={styles.postCard}>
       <Text style={styles.postContent}>{item.content}</Text>
@@ -184,6 +196,9 @@ export default function ProfileScreen() {
     );
   }
 
+  const currentDisplayName = profile?.displayName || "User Profile";
+  const currentPhotoUrl = profile?.photoURL;
+
   if (!user && !profile) {
     return (
       <SafeAreaView style={styles.container}>
@@ -194,44 +209,39 @@ export default function ProfileScreen() {
     );
   }
 
-  const handleSignOut = async () => {
-    try {
-      await signOut();
-      router.replace('/(auth)/login');
-    } catch (error) {
-      console.error('Error signing out:', error);
-      Alert.alert('Error', 'Failed to sign out. Please try again.');
-    }
-  };
-
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView style={styles.scrollView}>
         <View style={styles.header}>
           <Text style={styles.title}>Profile</Text>
-          <View style={{ flexDirection: 'row', gap: 50 }}></View>
+          <View style={styles.actionGroup}> 
+            <TouchableOpacity 
+              onPress={() => router.push('/notifications')}
+              style={styles.notificationButton}
+            >
+              <FontAwesome name="bell" size={24} color="#666" />
+              {unreadCount > 0 && (
+                <View style={styles.badgeContainer}>
+                  <Text style={styles.badgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
 
-          <TouchableOpacity 
-            onPress={() => router.push('/notifications')}
-            style={styles.notificationButton}
-          >
-            <FontAwesome name="bell" size={24} color="#666" />
-            {unreadCount > 0 && (
-              <View style={styles.badgeContainer}>
-                <Text style={styles.badgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
-              </View>
-            )}
-          </TouchableOpacity>
+            <TouchableOpacity onPress={() => router.push('/profile/edit')}>
+              <FontAwesome name="cog" size={24} color="#666" />
+            </TouchableOpacity>
 
-          <TouchableOpacity onPress={() => router.push('/profile/edit')}>
-            <FontAwesome name="cog" size={24} color="#666" />
-          </TouchableOpacity>
+            <TouchableOpacity onPress={handleSignOut}>
+              <FontAwesome name="sign-out" size={28} color="#ff4444" />
+              {/* <Text style={styles.signOutText}>Sign Out</Text> */}
+            </TouchableOpacity>
+          </View>
         </View>
 
         <View style={styles.profileSection}>
           <UserAvatar
-            photoUrl={user?.photoURL || createMockUser().photoURL || undefined}
-            displayName={user?.displayName || createMockUser().displayName}
+            photoUrl={currentPhotoUrl || undefined}
+            displayName={currentDisplayName}
             size={100}
           />
           <Text style={styles.displayName}>{user?.displayName || createMockUser().displayName}</Text>
@@ -295,10 +305,6 @@ export default function ProfileScreen() {
           />
         )}
 
-        <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
-          <FontAwesome name="sign-out" size={20} color="#ff4444" />
-          <Text style={styles.signOutText}>Sign Out</Text>
-        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );
@@ -382,8 +388,13 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     padding: 16,
   },
+  actionGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 20,
+  },
   notificationButton: {
-    position: 'relative', // Allows badge to position absolutely
+    position: 'relative',
   },
   badgeContainer: {
     position: 'absolute',
@@ -448,15 +459,15 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginBottom: 12,
   },
-  signOutButton: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: 8,
-    justifyContent: 'center',
-    marginBottom: 40,
-    marginTop: 20,
-    padding: 16,
-  },
+  // signOutButton: {
+  //   alignItems: 'center',
+  //   flexDirection: 'row',
+  //   gap: 8,
+  //   justifyContent: 'center',
+  //   marginBottom: 40,
+  //   marginTop: 20,
+  //   padding: 16,
+  // },
   signOutText: {
     color: '#ff4444',
     fontSize: 16,

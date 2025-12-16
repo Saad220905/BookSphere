@@ -1,4 +1,4 @@
-import { collection, query, where, onSnapshot, addDoc, serverTimestamp, Firestore, doc, runTransaction, arrayUnion, arrayRemove, increment, deleteDoc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, addDoc, serverTimestamp, Firestore, doc, runTransaction, arrayUnion, arrayRemove, increment, getDocs, deleteDoc } from 'firebase/firestore';
 import { db } from '../config/firebase'; 
 import { GoogleGenAI } from '@google/genai';
 import { geminiConfig } from 'config/environment';
@@ -16,8 +16,6 @@ export interface Comment {
   isSpoiler: boolean;
 }
 
-export type PageSentiment = 'Positive' | 'Negative' | 'Neutral' | 'Mixed';
-
 class CommentError extends Error {
   constructor(message: string) {
   super(message);
@@ -33,7 +31,8 @@ function getFirestoreInstance(): Firestore {
 }
 
 // New function to calculate the overall sentiment score per page
-function calculatePageSentiment(comments: Comment[]): 'Positive' | 'Negative' | 'Neutral' | 'Mixed' {
+// REUSING EXPORT FOR OVERALL BOOK SENTIMENT
+export function calculateAggregateSentiment(comments: Comment[]): 'Positive' | 'Negative' | 'Neutral' | 'Mixed' {
   if (comments.length === 0) {
     return 'Neutral'; // No comments means neutral mood
   }
@@ -43,9 +42,9 @@ function calculatePageSentiment(comments: Comment[]): 'Positive' | 'Negative' | 
   let validCount = 0;
 
   const sentimentWeights: { [key: string]: number } = {
-    'Positive': 2,
+    'Positive': 5,
     'Neutral': 0,
-    'Negative': -2,
+    'Negative': -5,
     'AnalysisError': 0, // Errors don't influence the page score
   };
 
@@ -65,18 +64,18 @@ function calculatePageSentiment(comments: Comment[]): 'Positive' | 'Negative' | 
   const averageScore = totalScore / validCount;
 
   // 3. Map score to final sentiment string
-  if (averageScore > 1.0) {
+  if (averageScore > 0.3) {
     return 'Positive';
-  } else if (averageScore < -1.0) {
+  } else if (averageScore < -0.3) {
     return 'Negative';
-  } else if (Math.abs(averageScore) <= 0.5) {
+  } else if (Math.abs(averageScore) <= 0.1) { //Only VERY close to zero is neutral
     return 'Neutral';
   } else {
-    return 'Mixed'; // A mix of strong positive and negative comments
+    return 'Mixed'; // A mix between -1.0 and 1.0 excluding neutral
   }
 }
 
-export function listenForComments(bookId: string, page: number, callback: (comments: Comment[], pageSentiment: PageSentiment) => void) {
+export function listenForComments(bookId: string, page: number, callback: (comments: Comment[], pageSentiment: 'Positive' | 'Negative' | 'Neutral' | 'Mixed') => void) {
   const firestore = getFirestoreInstance();
   const commentsRef = collection(firestore, `books/${bookId}/comments`);
   const q = query(commentsRef, where('page', '==', page));
@@ -103,7 +102,7 @@ export function listenForComments(bookId: string, page: number, callback: (comme
 
     //Modification/Addition for overall page scoring
     // Calculate the overall sentiment
-    const pageSentiment = calculatePageSentiment(comments);
+    const pageSentiment = calculateAggregateSentiment(comments);
 
     // Pass BOTH the comments and the new pageSentiment to the frontend
     callback(comments, pageSentiment);
@@ -113,6 +112,40 @@ export function listenForComments(bookId: string, page: number, callback: (comme
   });
   return unsubscribe;
 }
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+export async function calculateOverallBookSentiment(bookId: string): Promise<'Positive' | 'Negative' | 'Neutral' | 'Mixed' | 'No Comments' | 'AnalysisError'> {
+    const firestore = getFirestoreInstance();
+    
+    try {
+        // Query ALL documents in the 'comments' subcollection for the entire book
+        // We use the 'books/{bookId}/comments' path pattern
+        const commentsRef = collection(firestore, `books/${bookId}/comments`);
+        // The query itself only needs to check the book ID, which is implied by the path.
+        
+        const q = query(commentsRef);
+        
+        const snapshot = await getDocs(q);
+
+        // 1. Extract comment data
+        const allComments = snapshot.docs.map(doc => doc.data() as Comment);
+
+        if (allComments.length === 0) {
+            return 'No Comments';
+        }
+
+        // 2. Reuse the powerful aggregation logic you already defined
+        const overallSentiment = calculateAggregateSentiment(allComments); 
+
+        return overallSentiment;
+
+    } catch (error) {
+        console.error("Error calculating overall book sentiment:", error);
+        return 'AnalysisError';
+    }
+}
+
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 export async function addComment(bookId: string, page: number, text: string, userId: string, isSpoiler: boolean) {
@@ -213,6 +246,7 @@ export async function toggleLike(bookId:string, commentId: string, userId: strin
 export async function deleteComment(bookId: string, commentId: string): Promise<void> {
   const firestore = getFirestoreInstance();
   const commentRef = doc(firestore, `books/${bookId}/comments`, commentId);
+
   try {
     await deleteDoc(commentRef);
   } catch (e) {

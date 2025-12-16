@@ -1,18 +1,18 @@
-import { Firestore, addDoc, collection, doc, limit, onSnapshot, orderBy, query, serverTimestamp, updateDoc, where } from 'firebase/firestore';
+import { Firestore, addDoc, collection, deleteDoc, doc, limit, onSnapshot, orderBy, query, serverTimestamp, updateDoc, where } from 'firebase/firestore';
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { db } from '../config/firebase';
 import { useAuth } from './AuthContext';
 
 interface Notification {
   id: string;
-  type: 'like' | 'comment' | 'club_invite' | 'club_update' | 'new_video' | 'new_recommendation';
+  type: 'like' | 'comment' | 'club_invite' | 'club_update' | 'new_video' | 'new_recommendation' | 'friend_request';
   title: string;
   message: string;
   userId: string;
   targetId?: string;
-  targetType?: 'video' | 'club' | 'comment' | 'book';
+  targetType?: 'video' | 'club' | 'comment' | 'book' | 'user';
   fromUserId?: string;
-  fromUserDisplayName?: string;
+  fromUserDisplayName?: string | null;
   fromUserPhotoURL?: string | null;
   read: boolean;
   createdAt: any;
@@ -26,6 +26,8 @@ interface NotificationContextType {
   markAsRead: (notificationId: string) => Promise<void>;
   markAllAsRead: () => Promise<void>;
   createNotification: (notification: Omit<Notification, 'id' | 'read' | 'createdAt'>) => Promise<void>;
+  deleteNotification: (notificationId: string) => Promise<void>;
+  deleteAllNotifications: () => Promise<void>;
 }
 
 const NotificationContext = createContext<NotificationContextType>({
@@ -36,6 +38,8 @@ const NotificationContext = createContext<NotificationContextType>({
   markAsRead: async () => {},
   markAllAsRead: async () => {},
   createNotification: async () => {},
+  deleteNotification: async () => {},
+  deleteAllNotifications: async () => {},
 });
 
 export function NotificationProvider({ children }: { children: React.ReactNode }) {
@@ -148,6 +152,34 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     }
   };
 
+  const deleteNotification = async (notificationId: string) => {
+    if (!user || !db) return;
+
+    try {
+      const notificationRef = doc(db, 'notifications', notificationId);
+      await deleteDoc(notificationRef);
+    } catch (error) {
+      console.error('Error deleting notification:', error);
+    }
+  };
+
+  const deleteAllNotifications = async () => {
+    if (!user || !db) {
+      throw new Error('User or Database is not initialized');
+    }
+    try {
+      const deletePromises = notifications.map(async notification => {
+        const docRef = doc(db as Firestore, 'notifications', notification.id);
+        await deleteDoc(docRef);
+      });
+      await Promise.all(deletePromises);
+      
+    } catch (error) {
+      console.error('Error deleting all notifications:', error);
+      throw new Error('Failed to delete all notifications');
+    }
+  };
+
   return (
     <NotificationContext.Provider value={{
       notifications,
@@ -157,6 +189,8 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       markAsRead,
       markAllAsRead,
       createNotification,
+      deleteNotification,
+      deleteAllNotifications,
     }}>
       {children}
     </NotificationContext.Provider>
