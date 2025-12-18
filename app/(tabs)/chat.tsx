@@ -1,15 +1,14 @@
 import { FontAwesome } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { collection, onSnapshot, Firestore, query, where, addDoc, serverTimestamp, doc, deleteDoc, runTransaction, arrayUnion, arrayRemove, Timestamp, QuerySnapshot, DocumentData } from 'firebase/firestore';
+import { 
+  collection, onSnapshot, Firestore, query, where, addDoc, 
+  serverTimestamp, doc, deleteDoc, runTransaction, arrayUnion, 
+  arrayRemove, Timestamp 
+} from 'firebase/firestore';
 import React, { useEffect, useState, useMemo } from 'react';
 import {
-  FlatList,
-  StyleSheet,
-  TextInput,
-  TouchableOpacity,
-  View,
-  ActivityIndicator,
-  Alert
+  FlatList, StyleSheet, TextInput, TouchableOpacity, View, 
+  ActivityIndicator, Alert, StatusBar, Platform
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Text } from '@/components/Themed';
@@ -19,597 +18,428 @@ import { useAuth } from '@/contexts/AuthContext';
 import { UserProfile, getUserProfile } from '@/utils/userProfile'; 
 import { useNotifications } from '@/contexts/NotificationContext';
 
-// Interface for Friend Request documents in Firestore
+// --- Interfaces ---
 interface FriendRequest {
-    id: string; // Document ID from Firestore
+    id: string;
     fromUserId: string;
     fromUserName: string;
     fromUserPhoto?: string;
     toUserId: string;
     status: 'pending' | 'accepted' | 'declined';
-    createdAt: Timestamp | null; // Use Firestore Timestamp
+    createdAt: Timestamp | null;
 }
 
 export default function ChatScreen() {
-  const [allUsers, setAllUsers] = useState<UserProfile[]>([]); // Stores all users fetched from Firestore
-  const [friendsList, setFriendsList] = useState<UserProfile[]>([]); // State for actual friends
-  const [incomingRequests, setIncomingRequests] = useState<FriendRequest[]>([]); // State for incoming requests
+  const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
+  const [friendsList, setFriendsList] = useState<UserProfile[]>([]);
+  const [incomingRequests, setIncomingRequests] = useState<FriendRequest[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [loadingUsers, setLoadingUsers] = useState(true);
-  const [loadingRequests, setLoadingRequests] = useState(true);
-  const [loadingFriends, setLoadingFriends] = useState(true); // State for loading friends
-  
-  // Counter to manually trigger friend list refetch after accepting/unfriending
+  const [loading, setLoading] = useState(true);
   const [friendsDataChangeCounter, setFriendsDataChangeCounter] = useState(0); 
 
   const { user } = useAuth();
   const { createNotification } = useNotifications();
   const firestoreDb = db as Firestore;
 
-  // --- Fetch All Users (excluding self) ---
+  // --- Data Fetching Logic ---
   useEffect(() => {
-    if (!firestoreDb || !user) {
-      setAllUsers([]);
-      setLoadingUsers(false);
-      return;
-    }
-    setLoadingUsers(true);
-    const usersQuery = query(
-      collection(firestoreDb, 'users'),
-      where('uid', '!=', user.uid)
-    );
+    if (!firestoreDb || !user) return;
+    const usersQuery = query(collection(firestoreDb, 'users'), where('uid', '!=', user.uid));
     const unsubscribe = onSnapshot(usersQuery, (snapshot) => {
-      const usersList = snapshot.docs.map(doc => {
-          const data = doc.data();
-          return {
-              ...data,
-              uid: doc.id,
-              favoriteGenres: Array.isArray(data.favoriteGenres) ? data.favoriteGenres : [],
-          } as UserProfile
-      });
+      const usersList = snapshot.docs.map(doc => ({
+          ...doc.data(),
+          uid: doc.id,
+          favoriteGenres: Array.isArray(doc.data().favoriteGenres) ? doc.data().favoriteGenres : [],
+      } as UserProfile));
       setAllUsers(usersList);
-      setLoadingUsers(false);
-    }, (error: Error) => { 
-        console.error("Error fetching users: ", error);
-        setLoadingUsers(false);
-        Alert.alert("Error", "Could not fetch users.");
+      setLoading(false);
     });
     return () => unsubscribe();
-  }, [user, firestoreDb]);
+  }, [user]);
 
-  // --- Fetch Incoming Friend Requests ---
-   useEffect(() => {
-     if (!firestoreDb || !user) {
-       setIncomingRequests([]);
-       setLoadingRequests(false);
-       return;
-     }
-     setLoadingRequests(true);
-     const requestsQuery = query(
-       collection(firestoreDb, 'friendRequests'),
-       where('toUserId', '==', user.uid),
-       where('status', '==', 'pending') // Only show pending requests
-     );
-       const unsubscribe = onSnapshot(requestsQuery, (snapshot: QuerySnapshot<DocumentData>) => { 
-       const requests = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as FriendRequest));
-       setIncomingRequests(requests);
-       setLoadingRequests(false);
-     }, (error: Error) => { 
-         console.error("Error fetching friend requests:", error);
-         setLoadingRequests(false);
-         Alert.alert("Error", "Could not fetch friend requests.");
+  useEffect(() => {
+     if (!firestoreDb || !user) return;
+     const requestsQuery = query(collection(firestoreDb, 'friendRequests'), where('toUserId', '==', user.uid), where('status', '==', 'pending'));
+     const unsubscribe = onSnapshot(requestsQuery, (snapshot) => { 
+       setIncomingRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as FriendRequest)));
      });
      return () => unsubscribe();
-   }, [user, firestoreDb]);
+   }, [user]);
 
-   // --- Fetch Friends (Triggered by friendsDataChangeCounter) ---
    useEffect(() => {
         const fetchFriends = async () => {
-          if (!user || !firestoreDb) {
-            setFriendsList([]);
-            setLoadingFriends(false);
-            return;
-          }
-           setLoadingFriends(true);
+          if (!user) return;
            try {
-               // Fetch current user's profile which should contain the 'friends' array (of UIDs)
                const currentUserProfile = await getUserProfile(user.uid);
-               const friendIds = currentUserProfile?.friends || []; // Ensure friends is an array
-
+               const friendIds = currentUserProfile?.friends || [];
                if (friendIds.length > 0) {
-                   // Fetch profile data for each friend ID
                    const friendPromises = friendIds.map(id => getUserProfile(id));
-                   const friendProfiles = (await Promise.all(friendPromises)).filter(p => p !== null) as UserProfile[]; // Filter out null results if a friend profile was deleted
+                   const friendProfiles = (await Promise.all(friendPromises)).filter(p => p !== null) as UserProfile[];
                    setFriendsList(friendProfiles);
-               } else {
-                   setFriendsList([]); // No friend IDs
-               }
-           } catch (error) {
-                console.error("Error fetching friends list:", error);
-                setFriendsList([]); // Clear list on error
-           } finally {
-                setLoadingFriends(false);
-           }
+               } else { setFriendsList([]); }
+           } finally { setLoading(false); }
         };
         fetchFriends();
-   }, [user, firestoreDb, friendsDataChangeCounter]);
+   }, [user, friendsDataChangeCounter]);
 
-
-  // --- Search Logic (Filters allUsers based on genre, excluding existing friends) ---
   const searchResults = useMemo(() => {
-    const trimmedQuery = searchQuery.trim();
-    if (!trimmedQuery) return []; // No search results if query is empty
-
-    const lowerCaseQuery = trimmedQuery.toLowerCase();
-    const friendIds = new Set(friendsList.map(f => f.uid)); // Get IDs of current friends to exclude them
-
+    const trimmedQuery = searchQuery.trim().toLowerCase();
+    if (!trimmedQuery) return [];
+    const friendIds = new Set(friendsList.map(f => f.uid));
     return allUsers.filter(u =>
-      !friendIds.has(u.uid) && // Exclude users who are already friends
-      u.favoriteGenres?.some((genre: string) => genre.toLowerCase().includes(lowerCaseQuery))
+      !friendIds.has(u.uid) && 
+      u.favoriteGenres?.some((genre: string) => genre.toLowerCase().includes(trimmedQuery))
     );
   }, [searchQuery, allUsers, friendsList]); 
 
-  // --- Send Friend Request ---
+  // --- Handlers ---
   const handleAddFriend = async (targetUser: UserProfile) => {
-    if (!user || !firestoreDb) return;
-
-    if (user.uid === targetUser.uid) return;
-
-     if (friendsList.some(friend => friend.uid === targetUser.uid)) {
-         Alert.alert("Already Friends", `You are already friends with ${targetUser.displayName}.`);
-         return;
-     }
-
-    Alert.alert(
-      'Send Friend Request?',
-      `Send a request to connect with ${targetUser.displayName || 'this user'}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Send', onPress: async () => {
-             try {
-                 await addDoc(collection(firestoreDb, 'friendRequests'), {
-                   fromUserId: user.uid,
-                   fromUserName: user.displayName || user.email?.split('@')[0] || 'User', 
-                   fromUserPhoto: user.photoURL || null,
-                   toUserId: targetUser.uid,
-                   status: 'pending',
-                   createdAt: serverTimestamp(),
-                 });
-
-                //  // --- NOTIFICATION TRIGGER ---
-                 await createNotification({
-                   type: 'friend_request',
-                   title: 'New Friend Request',
-                   message: `${user.displayName || 'User'} sent you a friend request.`,
-                   userId: targetUser.uid, // Notify the target user
-                   fromUserId: user.uid,
-                   fromUserDisplayName: user.displayName || 'User',
-                   fromUserPhotoURL: user.photoURL,
-                   targetId: user.uid, 
-                   targetType: 'chat' 
-                 });
-
-                 Alert.alert('Request Sent!', `Friend request sent to ${targetUser.displayName || 'this user'}.`);
-             } catch (error) {
-                 console.error("Error sending friend request:", error);
-                 Alert.alert("Error", "Could not send friend request. Please try again.");
-             }
-           }
-        }
-      ]
-    );
+    if (!user) return;
+    Alert.alert('Send Request', `Want to connect with ${targetUser.displayName}?`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Send', onPress: async () => {
+          await addDoc(collection(firestoreDb, 'friendRequests'), {
+            fromUserId: user.uid, fromUserName: user.displayName || 'User', 
+            fromUserPhoto: user.photoURL || null, toUserId: targetUser.uid,
+            status: 'pending', createdAt: serverTimestamp(),
+          });
+          await createNotification({
+            type: 'friend_request', title: 'New Request', message: `${user.displayName} sent a request!`,
+            userId: targetUser.uid, fromUserId: user.uid, fromUserDisplayName: user.displayName || 'User',
+            fromUserPhotoURL: user.photoURL, targetId: user.uid, 
+          });
+      }}
+    ]);
   };
 
-   // --- Accept Friend Request ---
-    const handleAcceptRequest = async (request: FriendRequest) => {
-        if (!user || !firestoreDb) return;
-        const requestRef = doc(firestoreDb, 'friendRequests', request.id);
-        const currentUserRef = doc(firestoreDb, 'users', user.uid);
-        const senderUserRef = doc(firestoreDb, 'users', request.fromUserId);
-
-        try {
-            await runTransaction(firestoreDb, async (transaction) => {
-                const senderDoc = await transaction.get(senderUserRef);
-                if (!senderDoc.exists()) { 
-                    transaction.delete(requestRef); 
-                    throw new Error("Sender user no longer exists."); 
-                }
-
-                transaction.delete(requestRef); 
-
-                transaction.update(currentUserRef, {
-                    friends: arrayUnion(request.fromUserId)
-                });
-
-                transaction.update(senderUserRef, {
-                    friends: arrayUnion(user.uid)
-                });
-            });
-            Alert.alert("Friend Added!", `You are now friends with ${request.fromUserName}.`);
-            setFriendsDataChangeCounter(c => c + 1);
-
-        } 
-        catch (error) {
-            console.error("Error accepting friend request:", error);
-            Alert.alert("Error", "Could not accept friend request.");
-        }
-    };
-
-    // --- Decline Friend Request ---
-    const handleDeclineRequest = async (requestId: string) => {
-        if (!firestoreDb) return;
-        const requestRef = doc(firestoreDb, 'friendRequests', requestId);
-        try {
-            await deleteDoc(requestRef);
-        } catch (error) {
-            console.error("Error declining friend request:", error);
-            Alert.alert("Error", "Could not decline friend request.");
-        }
-    };
-
-    // --- Unfriend a Friend ---
-    const handleUnfriend = (friend: UserProfile) => {
-      if (!user || !firestoreDb) return;
-
-      Alert.alert(
-        'Unfriend?',
-        `Are you sure you want to unfriend ${friend.displayName || 'this user'}? This cannot be undone.`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Unfriend', 
-            style: 'destructive', 
-            onPress: async () => {
-              const currentUserRef = doc(firestoreDb, 'users', user.uid);
-              const friendUserRef = doc(firestoreDb, 'users', friend.uid);
-
-              try {
-                await runTransaction(firestoreDb, async (transaction) => {
-                  transaction.update(currentUserRef, {
-                    friends: arrayRemove(friend.uid)
-                  });
-
-                  transaction.update(friendUserRef, {
-                    friends: arrayRemove(user.uid)
-                  });
-                });
-                Alert.alert("Unfriended", `${friend.displayName || 'User'} has been removed from your friends list.`);
-                setFriendsDataChangeCounter(c => c + 1);
-
-              } catch (error) {
-                console.error("Error unfriending:", error);
-                Alert.alert("Error", "Could not unfriend user.");
-              }
-            }
-          }
-        ]
-      );
-    };
-
-  // Navigate to chat screen with an existing friend
-  const handleChatPress = (friend: UserProfile) => {
-     router.push({
-      pathname: `/chat/${friend.uid}`,
-      params: { otherUserName: friend.displayName || 'Chat' },
+  const handleAcceptRequest = async (request: FriendRequest) => {
+    if (!user) return;
+    await runTransaction(firestoreDb, async (transaction) => {
+        transaction.delete(doc(firestoreDb, 'friendRequests', request.id));
+        transaction.update(doc(firestoreDb, 'users', user.uid), { friends: arrayUnion(request.fromUserId) });
+        transaction.update(doc(firestoreDb, 'users', request.fromUserId), { friends: arrayUnion(user.uid) });
     });
+    setFriendsDataChangeCounter(c => c + 1);
   };
 
-  // --- Handle Options Menu (3 Dots) ---
+  const handleDeclineRequest = async (id: string) => {
+    await deleteDoc(doc(firestoreDb, 'friendRequests', id));
+  };
+
   const handleFriendOptions = (friend: UserProfile) => {
-    Alert.alert(
-      friend.displayName || 'Options',
-      'Choose an action',
-      [
-        {
-          text: 'View Profile',
-          onPress: () => {
-             // Navigate to the profile page of the friend
-             router.push(`/profile/${friend.uid}`);
-          }
-        },
-        {
-          text: 'Unfriend',
-          style: 'destructive',
-          onPress: () => handleUnfriend(friend) // Triggers the confirmation alert
-        },
-        {
-          text: 'Cancel',
-          style: 'cancel'
-        }
-      ]
-    );
+    Alert.alert(friend.displayName || 'User', 'Select action', [
+      { text: 'View Profile', onPress: () => router.push(`/profile/${friend.uid}`) },
+      { text: 'Unfriend', style: 'destructive', onPress: async () => {
+          await runTransaction(firestoreDb, async (t) => {
+            t.update(doc(firestoreDb, 'users', user!.uid), { friends: arrayRemove(friend.uid) });
+            t.update(doc(firestoreDb, 'users', friend.uid), { friends: arrayRemove(user!.uid) });
+          });
+          setFriendsDataChangeCounter(c => c + 1);
+      }},
+      { text: 'Cancel', style: 'cancel' }
+    ]);
   };
 
-  // Renders a user found via search, with an 'Add Friend' button
+  // --- Renders ---
   const renderSearchResultItem = ({ item }: { item: UserProfile }) => (
-    <View style={styles.userCard}>
-       <UserAvatar
-        photoUrl={item.photoURL}
-        displayName={item.displayName || 'Anonymous'}
-        size={65}
-      />
-      <View style={styles.userInfo}>
-        <Text style={styles.userName}>{item.displayName || 'Anonymous User'}</Text>
-        <Text style={styles.userGenres} numberOfLines={1}>
-          Genres: {item.favoriteGenres?.join(', ') || 'Not set'}
-        </Text>
+    <View style={[styles.mainFriendCard, styles.discoveryCard]}>
+      <View style={styles.avatarGlow}>
+        <UserAvatar photoUrl={item.photoURL} displayName={item.displayName || 'U'} size={55} />
       </View>
-      <TouchableOpacity onPress={() => handleAddFriend(item)} style={styles.addButton}>
-        <FontAwesome name="user-plus" size={24} color="#0a7ea4" />
+      <View style={styles.userInfo}>
+        <Text style={styles.friendName}>{item.displayName}</Text>
+        <View style={styles.tagContainer}>
+           {item.favoriteGenres?.slice(0, 2).map((g, i) => (
+             <View key={i} style={styles.genreTag}><Text style={styles.genreTagText}>{g}</Text></View>
+           ))}
+        </View>
+      </View>
+      <TouchableOpacity onPress={() => handleAddFriend(item)} style={styles.actionIconButton}>
+        <FontAwesome name="plus-circle" size={30} color="#6366f1" />
       </TouchableOpacity>
     </View>
   );
 
-  // Renders a user from the actual friends list
   const renderFriendItem = ({ item }: { item: UserProfile }) => (
-    <TouchableOpacity
-      style={styles.userCard}
-      onPress={() => handleChatPress(item)} // Navigate to chat on press
+    <TouchableOpacity 
+      activeOpacity={0.7}
+      style={styles.mainFriendCard} 
+      onPress={() => router.push({ pathname: `/chat/${item.uid}`, params: { otherUserName: item.displayName }})}
     >
-      <UserAvatar
-        photoUrl={item.photoURL}
-        displayName={item.displayName || 'Anonymous'}
-        size={70}
-      />
-      <View style={styles.userInfo}>
-        <Text style={styles.userName}>{item.displayName || 'Anonymous User'}</Text>
-        <Text style={styles.userActionText}>Chat now</Text>
+      <View style={styles.avatarGlow}>
+        <UserAvatar photoUrl={item.photoURL} displayName={item.displayName || 'U'} size={60} />
+        <View style={styles.onlineStatus} />
       </View>
-      
-      {/* Options Menu (3 dots) */}
-      <TouchableOpacity 
-        onPress={() => handleFriendOptions(item)} 
-        style={styles.optionsButton}
-      >
-        <FontAwesome name="ellipsis-v" size={20} color="#666" />
+      <View style={styles.userInfo}>
+        <Text style={styles.friendName}>{item.displayName}</Text>
+        <Text style={styles.lastMessage} numberOfLines={1}>Tap to open conversation</Text>
+      </View>
+      <TouchableOpacity onPress={() => handleFriendOptions(item)} style={styles.moreButton}>
+        <FontAwesome name="chevron-right" size={14} color="#CBD5E1" />
       </TouchableOpacity>
     </TouchableOpacity>
   );
 
-   // Renders an Incoming Friend Request Item
-    const renderRequestItem = ({ item }: { item: FriendRequest }) => (
-        <View style={styles.requestCard}>
-            <UserAvatar
-                photoUrl={item.fromUserPhoto}
-                displayName={item.fromUserName || 'User'}
-                size={40}
-            />
-            <View style={styles.requestInfo}>
-                <Text style={styles.userName}>{item.fromUserName || 'User'} wants to connect.</Text>
-            </View>
-            <View style={styles.requestActions}>
-                <TouchableOpacity onPress={() => handleAcceptRequest(item)} style={[styles.requestButton, styles.acceptButton]}>
-                    <FontAwesome name="check" size={18} color="#fff" />
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => handleDeclineRequest(item.id)} style={[styles.requestButton, styles.declineButton]}>
-                     <FontAwesome name="times" size={18} color="#fff" />
-                </TouchableOpacity>
-            </View>
+  const renderRequestItem = ({ item }: { item: FriendRequest }) => (
+    <View style={styles.requestCard}>
+        <UserAvatar photoUrl={item.fromUserPhoto} displayName={item.fromUserName} size={45} />
+        <View style={styles.userInfo}>
+            <Text style={styles.requestName}>{item.fromUserName}</Text>
+            <Text style={styles.requestSubtext}>New Friend Request</Text>
         </View>
-    );
+        <View style={styles.requestActions}>
+            <TouchableOpacity onPress={() => handleAcceptRequest(item)} style={[styles.requestButton, styles.acceptButton]}>
+                <FontAwesome name="check" size={16} color="#6366f1" />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => handleDeclineRequest(item.id)} style={[styles.requestButton, styles.declineButton]}>
+                 <FontAwesome name="times" size={16} color="#FFF" />
+            </TouchableOpacity>
+        </View>
+    </View>
+  );
 
-  // --- Main Return ---
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}> Chat </Text>
-      </View>
+    <View style={styles.mainContainer}>
+      <StatusBar barStyle="dark-content" />
+      <SafeAreaView style={{ flex: 1 }} edges={['top']}>
+        <View style={styles.header}>
+          <View>
+            <Text style={styles.welcomeText}>CONNECT &</Text>
+            <Text style={styles.title}>Chat</Text> 
+            
+          </View>
+          <TouchableOpacity style={styles.headerIcon} onPress={() => router.push('/profile')}>
+            <UserAvatar photoUrl={user?.photoURL} displayName={user?.displayName || 'Me'} size={44} />
+          </TouchableOpacity>
+        </View>
 
-      {/* Search Input */}
-      <View style={styles.searchContainer}>
-         <FontAwesome name="search" size={20} color="#999" style={styles.searchIcon} />
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Search users by favorite genre..."
-          placeholderTextColor="#999"
-          value={searchQuery}
-          onChangeText={setSearchQuery} 
-          clearButtonMode="while-editing" 
-          autoCapitalize="none" 
-        />
-      </View>
+        <View style={styles.searchWrapper}>
+          <View style={styles.searchGradient}>
+            <FontAwesome name="search" size={18} color="#6366f1" />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search by favorite genre..."
+              placeholderTextColor="#94a3b8"
+              value={searchQuery}
+              onChangeText={setSearchQuery} 
+            />
+          </View>
+        </View>
 
-      {/* Conditional List Rendering */}
-      {loadingUsers || loadingRequests || loadingFriends ? ( 
-        <ActivityIndicator style={styles.loader} size="large" color="#0a7ea4" />
-      ) : searchQuery.trim() ? (
-        // Show Search Results if query exists
-        <FlatList
-          data={searchResults}
-          renderItem={renderSearchResultItem}
-          keyExtractor={(item) => item.uid}
-          contentContainerStyle={styles.listContainer}
-          ListHeaderComponent={<Text style={styles.listHeader}>Search Results</Text>}
-          ListEmptyComponent={<Text style={styles.emptyText}>No users found matching "{searchQuery}".</Text>}
-        />
-      ) : (
-         // Show Friend Requests and Friends List if query is empty
-         <FlatList
-           data={[...incomingRequests, ...friendsList]}
-           keyExtractor={(item, index) => ('status' in item ? (item as FriendRequest).id : (item as UserProfile).uid) || `item-${index}` } 
-           renderItem={({ item }) => {
-               if ('status' in item && item.status === 'pending') {
-                   return renderRequestItem({ item: item as FriendRequest });
-               } else {
-                   return renderFriendItem({ item: item as UserProfile });
-               }
-           }}
-           ListHeaderComponent={() => (
-                <>
-                   {incomingRequests.length > 0 && (
-                       <Text style={styles.listHeader}>Friend Requests ({incomingRequests.length})</Text>
-                   )}
-                   <Text style={[
-                       styles.listHeader,
-                       incomingRequests.length > 0 && { marginTop: 20 } 
-                   ]}>
-                       Friends ({friendsList.length})
-                   </Text>
-                </>
-           )}
-           ListEmptyComponent={
-                (incomingRequests.length === 0 && friendsList.length === 0) ? (
-                     <Text style={styles.emptyText}>You haven't added any friends yet. Use the search bar above!</Text>
-                ) : null 
-           }
-           contentContainerStyle={styles.listContainer}
-         />
-       )}
-    </SafeAreaView>
+        {loading ? (
+            <ActivityIndicator style={{marginTop: 50}} color="#6366f1" size="large" />
+        ) : (
+            <FlatList
+              data={searchQuery.trim() ? searchResults : [...incomingRequests, ...friendsList]}
+              keyExtractor={(item, index) => ('uid' in item ? item.uid : item.id)}
+              renderItem={({ item }) => 'status' in item ? renderRequestItem({ item }) : ('uid' in item ? (searchQuery.trim() ? renderSearchResultItem({ item: item as UserProfile }) : renderFriendItem({ item: item as UserProfile })) : null)}
+              contentContainerStyle={styles.listContent}
+              showsVerticalScrollIndicator={false}
+              ListHeaderComponent={() => (
+                <Text style={styles.sectionTitle}>
+                  {searchQuery.trim() ? "People you might like" : "Conversations"}
+                </Text>
+              )}
+              ListEmptyComponent={<Text style={styles.emptyText}>Nothing here yet. Try searching for a genre!</Text>}
+            />
+        )}
+      </SafeAreaView>
+    </View>
   );
 }
 
-// --- Styles ---
 const styles = StyleSheet.create({
-    container: { 
-        flex: 1, 
-        backgroundColor: '#F2F4F6' 
-    }, 
-    header: { 
-        paddingVertical: 16, 
-        paddingHorizontal: 20, 
-        backgroundColor: '#FFFFFF', 
-        borderBottomWidth: 1,
-        borderBottomColor: '#E5E5EA',
-    },
-    title: { 
-        fontSize: 28, 
-        fontWeight: '800', 
-        color: '#1C1C1E',
-        textAlign: 'left'
-    },
-    
-    searchContainer: { 
-        flexDirection: 'row', 
-        alignItems: 'center', 
-        backgroundColor: '#FFFFFF', 
-        borderRadius: 12,       
-        marginHorizontal: 16,
-        marginTop: 16,
-        marginBottom: 12,
-        paddingHorizontal: 12,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.05,
-        shadowRadius: 3,
-        elevation: 2,
-    },
-    searchIcon: { marginRight: 10 },
-    searchInput: { 
-        flex: 1, 
-        height: 48, 
-        fontSize: 16, 
-        color: '#333' 
-    },
-    
-    loader: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    listContainer: { 
-        paddingHorizontal: 16, 
-        paddingBottom: 40,
-        paddingTop: 8
-    },
-
-    listHeader: { 
-        fontSize: 18,       
-        fontWeight: '700',  
-        color: '#666',     
-        marginTop: 16,    
-        marginBottom: 12,
-        marginLeft: 4,
-        textTransform: 'uppercase',
-        letterSpacing: 0.5
-    },
-    
-    userCard: { 
-        flexDirection: 'row', 
-        alignItems: 'center', 
-        paddingVertical: 16, 
-        paddingHorizontal: 16,
-        backgroundColor: '#FFFFFF', 
-        borderRadius: 16, 
-        marginBottom: 12, 
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.08,
-        shadowRadius: 6,
-        elevation: 3,
-    },
-    userInfo: { flex: 1, marginLeft: 16 },
-    userName: { 
-        fontSize: 16, 
-        fontWeight: '700', 
-        color: '#1C1C1E',
-        marginBottom: 4 
-    },
-    userGenres: { fontSize: 13, color: '#8E8E93' },
-    userActionText: { 
-        fontSize: 13, 
-        color: '#0a7ea4', 
-        fontWeight: '600',
-        marginTop: 2
-    },
-
-    addButton: {
-        padding: 10,
-        borderRadius: 20, 
-        backgroundColor: '#F0F8FF', 
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    optionsButton: {
-        padding: 8,
-        borderRadius: 20,
-        justifyContent: 'center',
-        alignItems: 'center',
-        width: 40,
-        backgroundColor: '#F9F9F9', 
-    },
-    
-    emptyText: { 
-        textAlign: 'center', 
-        marginTop: 40, 
-        fontSize: 16, 
-        color: '#999', 
-        paddingHorizontal: 40,
-        lineHeight: 24
-    },
-    
-    requestCard: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        padding: 16, 
-        backgroundColor: '#FFFFFF', 
-        borderRadius: 16,       
-        marginBottom: 12,       
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.08,
-        shadowRadius: 6,
-        elevation: 3,
-        borderLeftWidth: 4, 
-        borderLeftColor: '#0a7ea4' 
-    },
-    requestInfo: {
-        flex: 1,
-        marginLeft: 14,
-    },
-    requestActions: {
-        flexDirection: 'row',
-        gap: 8
-    },
-
-    requestButton: {
-        width: 36,          
-        height: 36,
-        borderRadius: 18,   
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    acceptButton: {
-        backgroundColor: '#0fff87ff', 
-    },
-    declineButton: {
-        backgroundColor: '#ff0000ff', 
-    },
+  mainContainer: {
+    flex: 1,
+    backgroundColor: '#F8FAFC', 
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingTop: 15,
+  },
+  welcomeText: {
+    fontSize: 12,
+    color: '#6366f1',
+    fontWeight: '800',
+    letterSpacing: 2,
+  },
+  title: {
+    fontSize: 34,
+    fontWeight: '900',
+    color: '#0F172A',
+    marginTop: -2,
+  },
+  headerIcon: {
+    padding: 2,
+    borderRadius: 50,
+    borderWidth: 2,
+    borderColor: '#6366f1',
+  },
+  searchWrapper: {
+    paddingHorizontal: 20,
+    marginVertical: 20,
+  },
+  searchGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 22,
+    paddingHorizontal: 20,
+    height: 64,
+    shadowColor: "#6366f1",
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.1,
+    shadowRadius: 20,
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+  },
+  searchInput: {
+    flex: 1,
+    marginLeft: 15,
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1E293B',
+  },
+  listContent: {
+    paddingHorizontal: 20,
+    paddingBottom: 100,
+  },
+  sectionTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#94A3B8',
+    textTransform: 'uppercase',
+    letterSpacing: 1.5,
+    marginBottom: 15,
+    marginLeft: 4,
+  },
+  mainFriendCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 28,
+    padding: 14,
+    marginBottom: 14,
+    shadowColor: "#000",
+    shadowOpacity: 0.04,
+    shadowRadius: 15,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+  },
+  discoveryCard: {
+    borderLeftWidth: 6,
+    borderLeftColor: '#6366f1',
+  },
+  avatarGlow: {
+    padding: 2,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 22,
+    position: 'relative',
+  },
+  onlineStatus: {
+    position: 'absolute',
+    bottom: 2,
+    right: 2,
+    width: 15,
+    height: 15,
+    borderRadius: 8,
+    backgroundColor: '#22C55E',
+    borderWidth: 3,
+    borderColor: '#FFF',
+  },
+  userInfo: {
+    flex: 1,
+    marginLeft: 16,
+  },
+  friendName: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1E293B',
+  },
+  lastMessage: {
+    fontSize: 13,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  moreButton: {
+    backgroundColor: '#F1F5F9',
+    width: 30,
+    height: 30,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  tagContainer: {
+    flexDirection: 'row',
+    marginTop: 6,
+  },
+  genreTag: {
+    backgroundColor: '#EEF2FF',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    marginRight: 6,
+  },
+  genreTagText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#6366f1',
+    textTransform: 'uppercase',
+  },
+  actionIconButton: {
+    padding: 4,
+  },
+  requestCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#6366f1',
+    borderRadius: 28,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: "#6366f1",
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  requestName: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#FFF',
+  },
+  requestSubtext: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.8)',
+    fontWeight: '600',
+  },
+  requestActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  requestButton: {
+    width: 42,
+    height: 42,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 14,
+  },
+  acceptButton: {
+    backgroundColor: '#FFF',
+  },
+  declineButton: {
+    backgroundColor: 'rgba(0,0,0,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  emptyText: {
+    textAlign: 'center',
+    marginTop: 60,
+    fontSize: 15,
+    color: '#94A3B8',
+    lineHeight: 22,
+  }
 });
