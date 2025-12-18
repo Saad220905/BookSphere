@@ -43,10 +43,11 @@ export default function SignupScreen() {
       setLoading(true);
       await signUp(email, password);
       router.replace("/create/profile");
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Sign up error:', error);
       const fallbackMessage = 'Unable to create account. Please try again.';
-      Alert.alert('Sign Up Error', error?.message ?? fallbackMessage);
+      const errorMessage = error instanceof Error ? error.message : fallbackMessage;
+      Alert.alert('Sign Up Error', errorMessage);
     } finally {
       setLoading(false);
     }

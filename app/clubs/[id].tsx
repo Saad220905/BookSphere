@@ -1,5 +1,5 @@
 import { FontAwesome } from '@expo/vector-icons';
-import { Stack, useLocalSearchParams } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import {
   Firestore,
   addDoc,
@@ -20,6 +20,7 @@ import {
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
+  ActivityIndicator,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -31,10 +32,10 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import LoadingSpinner from '../../components/LoadingSpinner';
-import PdfViewer from '../../components/Pdfviewer';
 import { Text } from '../../components/Themed';
 import { db } from '../../config/firebase';
 import { useAuth } from '../../contexts/AuthContext';
+import { calculateOverallBookSentiment } from '../../utils/bookComments';
 
 interface ClubDetails {
   id: string;
@@ -70,6 +71,7 @@ interface ClubPost {
 export default function ClubDetailsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user, userProfile } = useAuth();
+  const router = useRouter();
 
   const [club, setClub] = useState<ClubDetails | null>(null);
   const [book, setBook] = useState<BookDetails | null>(null);
@@ -80,16 +82,10 @@ export default function ClubDetailsScreen() {
   const [forumPosts, setForumPosts] = useState<ClubPost[]>([]);
   const [newPost, setNewPost] = useState('');
   const [draftPageContext, setDraftPageContext] = useState<number | null>(null);
-  const [selectedTab, setSelectedTab] = useState<'forum' | 'reading'>('forum');
-  const [currentReadingPage, setCurrentReadingPage] = useState<number | null>(null);
+  const [overallSentiment, setOverallSentiment] = useState<'Positive' | 'Negative' | 'Neutral' | 'Mixed' | 'No Comments' | 'AnalysisError' | 'Loading...'>('Loading...');
 
   const isAuthenticated = Boolean(user);
   const firestore = db as Firestore | null;
-
-  const pdfUrl = useMemo(() => {
-    if (!book) return null;
-    return book.pdfUrl || book.pdf_url || null;
-  }, [book]);
 
   const bookCover = useMemo(() => {
     if (!book) return null;
@@ -168,6 +164,23 @@ export default function ClubDetailsScreen() {
   useEffect(() => {
     refreshMembership();
   }, [refreshMembership]);
+
+  useEffect(() => {
+    const fetchSentiment = async () => {
+      if (book?.id) {
+        try {
+          const result = await calculateOverallBookSentiment(book.id);
+          setOverallSentiment(result);
+        } catch (error) {
+          console.error('Error calculating sentiment:', error);
+          setOverallSentiment('AnalysisError');
+        }
+      } else {
+        setOverallSentiment('Loading...');
+      }
+    };
+    fetchSentiment();
+  }, [book?.id]);
 
   useEffect(() => {
     if (!firestore || !id) return;
@@ -303,11 +316,44 @@ export default function ClubDetailsScreen() {
     }
   }, [draftPageContext, firestore, id, isMember, newPost, user, userProfile]);
 
-  const handleShareCurrentPage = useCallback(() => {
-    if (!currentReadingPage) return;
-    setDraftPageContext(currentReadingPage);
-    setSelectedTab('forum');
-  }, [currentReadingPage]);
+  const handleOpenReadingRoom = useCallback((pageNumber?: number) => {
+    if (!book) return;
+    const pdfUrl = book.pdfUrl || book.pdf_url;
+    if (!pdfUrl) return;
+    
+    const params: Record<string, string> = {
+      pdf_url: pdfUrl,
+      book_id: book.id,
+    };
+    
+    if (book.title) {
+      params.book_title = book.title;
+    }
+    
+    if (pageNumber) {
+      params.initial_page = pageNumber.toString();
+    }
+    
+    router.push({
+      pathname: '/viewer',
+      params,
+    });
+  }, [router, book]);
+
+  const getSentimentStyle = (sentiment: string) => {
+    switch (sentiment) {
+      case 'Positive': return { color: '#1B5E20', backgroundColor: '#C8E6C9', emoji: '😊' };
+      case 'Negative': return { color: '#B71C1C', backgroundColor: '#FFCDD2', emoji: '😔' };
+      case 'Mixed': return { color: '#37474F', backgroundColor: '#CFD8DC', emoji: '🤨' };
+      case 'Neutral':
+      case 'No Comments':
+      case 'AnalysisError':
+        return { color: '#5D4037', backgroundColor: '#FFF9C4', emoji: '😐' };
+      case 'Loading...':
+      default:
+        return { color: '#777', backgroundColor: '#F0F0F0', emoji: '...' };
+    }
+  };
 
   const formatPostTimestamp = (date: Date | null) => {
     if (!date) return 'Just now';
@@ -338,10 +384,21 @@ export default function ClubDetailsScreen() {
             <View style={styles.postHeader}>
               <Text style={styles.postAuthor}>{post.authorName}</Text>
               {post.pageNumber ? (
-                <View style={styles.pageBadge}>
+                <TouchableOpacity
+                  style={styles.pageBadge}
+                  onPress={() => {
+                    if (book && post.pageNumber) {
+                      handleOpenReadingRoom(post.pageNumber);
+                    } else {
+                      Alert.alert('No PDF', 'This book does not have a PDF available.');
+                    }
+                  }}
+                  activeOpacity={0.7}
+                >
                   <FontAwesome name="file-text" size={12} color="#0a7ea4" />
                   <Text style={styles.pageBadgeText}>Page {post.pageNumber}</Text>
-                </View>
+                  <FontAwesome name="external-link" size={10} color="#0a7ea4" style={styles.pageLinkIcon} />
+                </TouchableOpacity>
               ) : null}
             </View>
             <Text style={styles.postBody}>{post.body}</Text>
@@ -356,13 +413,49 @@ export default function ClubDetailsScreen() {
         style={styles.postComposer}
       >
         <View style={styles.pageContextRow}>
-          <Text style={styles.pageContextLabel}>
-            {draftPageContext ? `Linked to page ${draftPageContext}` : 'No page linked'}
-          </Text>
-          {draftPageContext && (
-            <TouchableOpacity onPress={() => setDraftPageContext(null)}>
-              <Text style={styles.clearPageLink}>Clear</Text>
-            </TouchableOpacity>
+          {draftPageContext ? (
+            <View style={styles.pageContextBadge}>
+              <FontAwesome name="file-text" size={12} color="#0a7ea4" />
+              <Text style={styles.pageContextText}>Page {draftPageContext}</Text>
+              <TouchableOpacity 
+                onPress={() => setDraftPageContext(null)}
+                style={styles.removePageButton}
+              >
+                <FontAwesome name="times" size={12} color="#666" />
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={styles.pageContextActions}>
+              <TouchableOpacity
+                style={styles.linkPageButton}
+                onPress={() => {
+                  Alert.prompt(
+                    'Link Page',
+                    'Enter the page number you want to reference:',
+                    [
+                      { text: 'Cancel', style: 'cancel' },
+                      {
+                        text: 'Link',
+                        onPress: (pageText) => {
+                          const pageNum = parseInt(pageText || '0', 10);
+                          if (pageNum > 0) {
+                            setDraftPageContext(pageNum);
+                          } else {
+                            Alert.alert('Invalid', 'Please enter a valid page number.');
+                          }
+                        },
+                      },
+                    ],
+                    'plain-text',
+                    '',
+                    'numeric'
+                  );
+                }}
+              >
+                <FontAwesome name="link" size={12} color="#0a7ea4" />
+                <Text style={styles.linkPageText}>Link Page</Text>
+              </TouchableOpacity>
+            </View>
           )}
         </View>
 
@@ -388,45 +481,6 @@ export default function ClubDetailsScreen() {
     </View>
   );
 
-  const renderReadingRoom = () => (
-    <View style={styles.readerSection}>
-      <View style={styles.readerHeader}>
-        <View>
-          <Text style={styles.readerTitle}>Shared Reader</Text>
-          {currentReadingPage ? (
-            <Text style={styles.readerSubtitle}>Currently on page {currentReadingPage}</Text>
-          ) : (
-            <Text style={styles.readerSubtitle}>Start reading to share progress</Text>
-          )}
-        </View>
-        {isMember && currentReadingPage && (
-          <TouchableOpacity style={styles.discussButton} onPress={handleShareCurrentPage}>
-            <FontAwesome name="commenting" size={16} color="#fff" />
-            <Text style={styles.discussButtonText}>Discuss this page</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-
-      <View style={styles.viewerContainer}>
-        {pdfUrl ? (
-          <PdfViewer
-            source={{ uri: pdfUrl, cache: true }}
-            bookId={book?.id || club?.bookId || id || 'club-book'}
-            onPageChanged={(page) => setCurrentReadingPage(page)} isNightMode={false} setIsNightMode={function (value: React.SetStateAction<boolean>): void {
-              throw new Error('Function not implemented.');
-            } }          />
-        ) : (
-          <View style={styles.emptyReader}>
-            <FontAwesome name="file-pdf-o" size={32} color="#999" />
-            <Text style={styles.emptyReaderTitle}>No PDF available</Text>
-            <Text style={styles.emptyReaderSubtitle}>
-              Ask the club owner to attach a public PDF to this book.
-            </Text>
-          </View>
-        )}
-      </View>
-    </View>
-  );
 
   if (loading) {
     return (
@@ -508,67 +562,56 @@ export default function ClubDetailsScreen() {
         </View>
 
         {book && (
-          <View style={styles.bookCard}>
-            <Image
-              source={{
-                uri:
-                  bookCover ||
-                  'https://via.placeholder.com/70x100/eeeeee/999999?text=Book',
-              }}
-              style={styles.bookCover}
-            />
-            <View style={styles.bookInfo}>
-              <Text style={styles.bookTitle}>{book.title ?? 'Current book'}</Text>
-              {book.author ? <Text style={styles.bookAuthor}>{book.author}</Text> : null}
-              {pdfUrl ? (
-                <Text style={styles.bookSubtitle}>Shared public PDF available</Text>
-              ) : (
-                <Text style={styles.bookSubtitleMuted}>PDF not attached</Text>
-              )}
+          <>
+            <View style={styles.bookCard}>
+              <Image
+                source={{
+                  uri:
+                    bookCover ||
+                    'https://via.placeholder.com/70x100/eeeeee/999999?text=Book',
+                }}
+                style={styles.bookCover}
+              />
+              <View style={styles.bookInfo}>
+                <Text style={styles.bookTitle}>{book.title ?? 'Current book'}</Text>
+                {book.author ? <Text style={styles.bookAuthor}>{book.author}</Text> : null}
+                {(book.pdfUrl || book.pdf_url) ? (
+                  <Text style={styles.bookSubtitle}>Shared public PDF available</Text>
+                ) : (
+                  <Text style={styles.bookSubtitleMuted}>PDF not attached</Text>
+                )}
+              </View>
             </View>
-          </View>
+            {book.id && (
+              <View style={[styles.sentimentBanner, { backgroundColor: getSentimentStyle(overallSentiment).backgroundColor }]}>
+                {overallSentiment === 'Loading...' ? (
+                  <ActivityIndicator size="small" color={getSentimentStyle(overallSentiment).color} />
+                ) : overallSentiment === 'No Comments' ? (
+                  <Text style={[styles.sentimentText, { color: getSentimentStyle(overallSentiment).color }]}>
+                    No Comments Yet — Be the first to share your thoughts!
+                  </Text>
+                ) : overallSentiment === 'AnalysisError' ? (
+                  <Text style={[styles.sentimentText, { color: getSentimentStyle(overallSentiment).color }]}>
+                    Analysis Error
+                  </Text>
+                ) : (
+                  <Text style={[styles.sentimentText, { color: getSentimentStyle(overallSentiment).color }]}>
+                    Overall Reader Sentiment: {getSentimentStyle(overallSentiment).emoji} {overallSentiment}
+                  </Text>
+                )}
+              </View>
+            )}
+          </>
         )}
 
-        <View style={styles.tabBar}>
-          <TouchableOpacity
-            style={[styles.tabButton, selectedTab === 'forum' && styles.tabButtonActive]}
-            onPress={() => setSelectedTab('forum')}
-          >
-            <FontAwesome
-              name="comments"
-              size={16}
-              color={selectedTab === 'forum' ? '#fff' : '#666'}
-            />
-            <Text
-              style={[
-                styles.tabButtonText,
-                selectedTab === 'forum' && styles.tabButtonTextActive,
-              ]}
-            >
-              Forum
-            </Text>
+        {(book?.pdfUrl || book?.pdf_url) && (
+          <TouchableOpacity style={styles.readingRoomButton} onPress={handleOpenReadingRoom}>
+            <FontAwesome name="book" size={20} color="#fff" />
+            <Text style={styles.readingRoomButtonText}>Open Reading Room</Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tabButton, selectedTab === 'reading' && styles.tabButtonActive]}
-            onPress={() => setSelectedTab('reading')}
-          >
-            <FontAwesome
-              name="book"
-              size={16}
-              color={selectedTab === 'reading' ? '#fff' : '#666'}
-            />
-            <Text
-              style={[
-                styles.tabButtonText,
-                selectedTab === 'reading' && styles.tabButtonTextActive,
-              ]}
-            >
-              Reading room
-            </Text>
-          </TouchableOpacity>
-        </View>
+        )}
 
-        {selectedTab === 'forum' ? renderForumPosts() : renderReadingRoom()}
+        {renderForumPosts()}
       </ScrollView>
     </SafeAreaView>
   );
@@ -621,11 +664,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
   },
-  clearPageLink: {
-    color: '#0a7ea4',
-    fontSize: 13,
-    fontWeight: '600',
-  },
   clubDescription: {
     color: '#444',
     marginTop: 4,
@@ -649,19 +687,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#f5f6f8',
     flex: 1,
   },
-  discussButton: {
-    alignItems: 'center',
-    backgroundColor: '#0a7ea4',
-    borderRadius: 20,
-    flexDirection: 'row',
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-  },
-  discussButtonText: {
-    color: '#fff',
-    fontWeight: '600',
-  },
   emptyForum: {
     alignItems: 'center',
     borderColor: '#eee',
@@ -675,22 +700,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   emptyForumTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginTop: 12,
-  },
-  emptyReader: {
-    alignItems: 'center',
-    flex: 1,
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-  },
-  emptyReaderSubtitle: {
-    color: '#777',
-    marginTop: 6,
-    textAlign: 'center',
-  },
-  emptyReaderTitle: {
     fontSize: 16,
     fontWeight: '600',
     marginTop: 12,
@@ -751,21 +760,54 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 4,
     paddingHorizontal: 8,
-    paddingVertical: 2,
+    paddingVertical: 4,
   },
   pageBadgeText: {
     color: '#0a7ea4',
     fontSize: 12,
     fontWeight: '600',
   },
-  pageContextLabel: {
-    color: '#666',
-    fontSize: 13,
+  pageLinkIcon: {
+    marginLeft: 2,
   },
   pageContextRow: {
+    marginBottom: 8,
+  },
+  pageContextBadge: {
     alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: '#e6f4fb',
+    borderRadius: 16,
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  pageContextText: {
+    color: '#0a7ea4',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  removePageButton: {
+    marginLeft: 4,
+    padding: 2,
+  },
+  pageContextActions: {
+    flexDirection: 'row',
+  },
+  linkPageButton: {
+    alignItems: 'center',
+    backgroundColor: '#f0f8ff',
+    borderRadius: 16,
+    flexDirection: 'row',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  linkPageText: {
+    color: '#0a7ea4',
+    fontSize: 13,
+    fontWeight: '600',
   },
   postBody: {
     color: '#333',
@@ -814,23 +856,20 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-  readerHeader: {
+  readingRoomButton: {
     alignItems: 'center',
+    backgroundColor: '#0a7ea4',
+    borderRadius: 12,
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 12,
+    gap: 10,
+    justifyContent: 'center',
+    marginBottom: 16,
+    paddingHorizontal: 20,
+    paddingVertical: 14,
   },
-  readerSection: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 16,
-  },
-  readerSubtitle: {
-    color: '#666',
-    marginTop: 4,
-  },
-  readerTitle: {
-    fontSize: 18,
+  readingRoomButtonText: {
+    color: '#fff',
+    fontSize: 16,
     fontWeight: '600',
   },
   retryButton: {
@@ -874,40 +913,6 @@ const styles = StyleSheet.create({
   sendButtonDisabled: {
     opacity: 0.4,
   },
-  tabBar: {
-    backgroundColor: '#fff',
-    borderRadius: 40,
-    flexDirection: 'row',
-    marginBottom: 16,
-    padding: 6,
-  },
-  tabButton: {
-    alignItems: 'center',
-    borderRadius: 30,
-    flex: 1,
-    flexDirection: 'row',
-    gap: 8,
-    justifyContent: 'center',
-    paddingVertical: 10,
-  },
-  tabButtonActive: {
-    backgroundColor: '#0a7ea4',
-  },
-  tabButtonText: {
-    color: '#666',
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  tabButtonTextActive: {
-    color: '#fff',
-  },
-  viewerContainer: {
-    borderColor: '#f0f0f0',
-    borderRadius: 16,
-    borderWidth: 1,
-    height: 600,
-    overflow: 'hidden',
-  },
   centered: {
     alignItems: 'center',
     flex: 1,
@@ -918,6 +923,18 @@ const styles = StyleSheet.create({
     color: '#111',
     fontSize: 15,
     fontWeight: '600',
+  },
+  sentimentBanner: {
+    borderRadius: 12,
+    marginBottom: 16,
+    padding: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sentimentText: {
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center',
   },
 });
 

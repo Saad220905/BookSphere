@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { StyleSheet, View, Dimensions, ActivityIndicator, Text, TouchableOpacity, KeyboardAvoidingView, Modal, TouchableWithoutFeedback, TextInput, Button, Platform, Animated } from 'react-native';
-import Pdf, { type PdfDocumentProps } from 'react-native-pdf'; // this error is not real, ignore
+import React, { useState, useEffect, useRef, ComponentProps } from 'react';
+import { StyleSheet, View, Dimensions, ActivityIndicator, Text, TouchableOpacity, KeyboardAvoidingView, Modal, TouchableWithoutFeedback, TextInput, Animated } from 'react-native';
+import Pdf from 'react-native-pdf';
 import { updateBookPageCount } from '../utils/getBook';
 import { FontAwesome } from '@expo/vector-icons';
 import { auth } from '../config/firebase';
@@ -33,14 +33,15 @@ interface PdfViewerProps {
   onPageChanged?: (page: number, totalPages: number) => void;
   isNightMode: boolean; 
   setIsNightMode: React.Dispatch<React.SetStateAction<boolean>>;
+  initialPage?: number;
 }
 
-export default function PdfViewer({ source, bookId, onPageChanged, isNightMode, setIsNightMode }: PdfViewerProps) {
+export default function PdfViewer({ source, bookId, onPageChanged, isNightMode, setIsNightMode, initialPage: propInitialPage }: PdfViewerProps) {
   // Page stuff
   const [totalPages, setTotalPages] = useState<number>(0);
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [initialPage, setInitialPage] = useState<number>(1);
+  const [initialPage, setInitialPage] = useState<number>(propInitialPage || 1);
 
 
   // Comment stuff
@@ -72,16 +73,25 @@ export default function PdfViewer({ source, bookId, onPageChanged, isNightMode, 
   };
 
   useEffect(() => {
-    // Only fetch saved page if we have a valid user and book
-    if (currentUserId !== 'anonymous_user' && bookId) {
-      loadReadingProgress(currentUserId, bookId).then(progress => {
-        if (progress?.currentPage) {
-          console.log(`Resuming reading at page ${progress.currentPage}`);
-          setInitialPage(progress.currentPage); // Set the start page
-        }
-      });
+    // If initialPage prop is provided, use it (for navigation from forum)
+    if (propInitialPage) {
+      setInitialPage(propInitialPage);
+      return;
     }
-  }, [bookId, currentUserId]);
+    
+    // Otherwise, fetch saved page if we have a valid user and book
+    if (currentUserId !== 'anonymous_user' && bookId) {
+      loadReadingProgress(currentUserId, bookId)
+        .then(progress => {
+          if (progress?.currentPage) {
+            setInitialPage(progress.currentPage); // Set the start page
+          }
+        })
+        .catch((error) => {
+          console.error('Error loading reading progress:', error);
+        });
+    }
+  }, [bookId, currentUserId, propInitialPage]);
 
   useEffect(() => {
     if (!bookId || !currentPage) return;
@@ -125,22 +135,26 @@ export default function PdfViewer({ source, bookId, onPageChanged, isNightMode, 
           trustAllCerts={false}
           horizontal={true}
           onLoadComplete={(numberOfPages: number) => {
-            console.log(`Total pages loaded: ${numberOfPages}`) // DEBUG : remove later
             setTotalPages(numberOfPages);
             setIsLoading(false);
-            updateBookPageCount(bookId, numberOfPages); 
-            saveReadingProgress(currentUserId, bookId, currentPage, numberOfPages); 
+            updateBookPageCount(bookId, numberOfPages).catch((err) => {
+              console.error('Error updating book page count:', err);
+            });
+            saveReadingProgress(currentUserId, bookId, currentPage, numberOfPages).catch((err) => {
+              console.error('Error saving reading progress:', err);
+            });
           }}
           onPageChanged={(page: number, numberOfPages: number) => {
-            console.log(`Page turned: ${page}`) // DEBUG : remove later
-            saveReadingProgress(currentUserId, bookId, page, numberOfPages); 
+            saveReadingProgress(currentUserId, bookId, page, numberOfPages).catch((err) => {
+              console.error('Error saving reading progress:', err);
+            });
             setCurrentPage(page);
             if (onPageChanged) {
               onPageChanged(page, numberOfPages);
             }
           }}
           onError={(error: object) => {
-            console.log(error);
+            console.error('PDF loading error:', error);
             setIsLoading(false);
           }}
           style={[styles.pdf, isNightMode && styles.pdfNight]}
@@ -167,10 +181,14 @@ export default function PdfViewer({ source, bookId, onPageChanged, isNightMode, 
         {/* Night mode toggle */}
         {!isLoading && (
           <TouchableOpacity 
-            style={styles.nightModeToggle} 
+            style={[styles.nightModeToggle, isNightMode && styles.nightModeToggleActive]} 
             onPress={() => setIsNightMode(!isNightMode)}
+            activeOpacity={0.7}
           >
             <NightModeToggleIcon active={isNightMode} />
+            <Text style={styles.nightModeLabel}>
+              {isNightMode ? 'Lights Off' : 'Lights On'}
+            </Text>
           </TouchableOpacity>
         )}
       </View>
@@ -278,10 +296,29 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 20,
     right: 20,
-    padding: 8,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    borderRadius: 20,
-    zIndex: 2, 
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    borderRadius: 24,
+    zIndex: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  nightModeToggleActive: {
+    backgroundColor: 'rgba(0, 0, 0, 0.85)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 215, 0, 0.3)',
+  },
+  nightModeLabel: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
   },
   modalNight: {
     backgroundColor: '#1c1c1e',

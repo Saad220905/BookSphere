@@ -1,4 +1,4 @@
-import { User, createUserWithEmailAndPassword, signOut as firebaseSignOut, signInWithEmailAndPassword } from 'firebase/auth';
+import { User, createUserWithEmailAndPassword, signOut as firebaseSignOut, signInWithEmailAndPassword, AuthError } from 'firebase/auth';
 import { createContext, useContext, useEffect, useState } from 'react';
 import { auth } from '../config/firebase';
 import { UserProfile, createUserProfile, getUserProfile } from '../utils/userProfile';
@@ -82,7 +82,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     try {
       await signInWithEmailAndPassword(auth, email, password);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Sign in error:', error);
       throw error;
     }
@@ -96,7 +96,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       // Create user profile after successful sign up
       await createUserProfile(userCredential.user);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Sign up error:', error);
       throw error;
     }
@@ -109,7 +109,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       await firebaseSignOut(auth);
       setUserProfile(null);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Sign out error:', error);
       throw error;
     }
