@@ -140,7 +140,7 @@ export default function ChatScreen() {
     ]);
   };
 
-  // --- Renders ---
+  // --- Renders ---//
   const renderSearchResultItem = ({ item }: { item: UserProfile }) => (
     <View style={[styles.mainFriendCard, styles.discoveryCard]}>
       <View style={styles.avatarGlow}>
