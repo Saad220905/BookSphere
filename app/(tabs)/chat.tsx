@@ -140,7 +140,7 @@ export default function ChatScreen() {
     ]);
   };
 
-  // --- Renders ---//
+  // --- Renders ---
   const renderSearchResultItem = ({ item }: { item: UserProfile }) => (
     <View style={[styles.mainFriendCard, styles.discoveryCard]}>
       <View style={styles.avatarGlow}>
@@ -168,7 +168,6 @@ export default function ChatScreen() {
     >
       <View style={styles.avatarGlow}>
         <UserAvatar photoUrl={item.photoURL} displayName={item.displayName || 'U'} size={60} />
-        <View style={styles.onlineStatus} />
       </View>
       <View style={styles.userInfo}>
         <Text style={styles.friendName}>{item.displayName}</Text>
@@ -340,17 +339,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#F8FAFC',
     borderRadius: 22,
     position: 'relative',
-  },
-  onlineStatus: {
-    position: 'absolute',
-    bottom: 2,
-    right: 2,
-    width: 15,
-    height: 15,
-    borderRadius: 8,
-    backgroundColor: '#22C55E',
-    borderWidth: 3,
-    borderColor: '#FFF',
   },
   userInfo: {
     flex: 1,
